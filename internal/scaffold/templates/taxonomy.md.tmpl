@@ -1,0 +1,27 @@
+---
+id: sop-taxonomy
+project: {{.ProjectName}}
+category: cheatsheet
+status: active
+tags:
+  - {{.TicketPrefix}}
+created_at: {{.CreatedAt}}
+updated_at: {{.CreatedAt}}
+---
+
+# {{.ProjectName}} 지식창고 분류 체계 (Taxonomy)
+
+이 문서의 본문(Categories / Tags)이 SSOT다. 문서를 만들 때 이 화이트리스트만 사용한다.
+
+## 1. Categories (단일 선택)
+
+- `architecture`: 시스템과 데이터 파이프라인 설계
+- `spec`: 구현 명세서
+- `tech_note`: 기술 기록과 문제 해결
+- `cheatsheet`: 환경 설정과 절차 매뉴얼
+- `log`: 세션, 회의, 진척 요약
+
+## 2. Tags (다중 선택)
+
+- Project: `#{{.TicketPrefix}}`
+- Process: `#PoC`, `#Refactoring`, `#Tips`, `#ICD`
