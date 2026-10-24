@@ -11,3 +11,4 @@
 ## Done
 - [x] IEMS-001: [Feat](Architecture): 범용 파이프라인 엔진 안정화 및 도메인 디커플링 정규화
 - [x] HUB-005: [Feat](Scaffold): Cursor 거버넌스 및 Repomix 인프라 4종 파일 동적 스캐폴딩 구축
+- [x] HUB-007: [Docs](SOP): 파이프라인 Phase별 운영자 표준 프롬프트 매뉴얼 및 템플릿 등재
