@@ -36,6 +36,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	project := fs.String("project", "", "project name for -init; default is the directory name")
 	force := fs.Bool("force", false, "overwrite existing scaffold files")
 	debugFlag := fs.Bool("debug", false, "write error type, unwrap chain, and context to stderr")
+	version := fs.Bool("version", false, "print mcp-hub version and exit")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -63,9 +64,16 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if issueID != "" {
 		modes++
 	}
+	if *version {
+		modes++
+	}
 	if modes > 1 {
-		fmt.Fprintln(stderr, "mcp-hub: -init, -ingest-clipboard, -close-ticket, and -issue-token are mutually exclusive")
+		fmt.Fprintln(stderr, "mcp-hub: -init, -ingest-clipboard, -close-ticket, -issue-token, and -version are mutually exclusive")
 		return 2
+	}
+	if *version {
+		fmt.Fprintf(stdout, "mcp-hub %s\n", protocol.ServerVersion)
+		return 0
 	}
 	if (*prefix != "" || *vault != "" || *project != "" || *force) && !*initProject {
 		fmt.Fprintln(stderr, "mcp-hub: -prefix, -vault, -project, and -force require -init")
