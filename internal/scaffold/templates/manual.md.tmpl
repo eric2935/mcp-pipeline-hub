@@ -113,12 +113,32 @@ flowchart TD
 3. 워크스페이스 루트에서 `mcp-hub -ingest-clipboard`를 실행한다. 성공 JSON은 `spec_file_path`, `todo_line`, `todo_updated`다.
 4. 티켓 접두사는 `{{.TicketPrefix}}`다. 예: `{{.TicketPrefix}}-1`.
 
+표준 프롬프트: 클립보드 Spec 인제스트
+
+```text
+mcp-hub -ingest-clipboard
+```
+
 ### Phase 2
 
 1. 티켓마다 새 채팅에서 Plan을 요청한다. 코드 수정 전에 Scope, Action Items, Archiving Target을 받는다.
 2. 사람이 착수를 승인한다.
 3. Cursor가 `hub_prepare_branch`를 호출한다. `ticket_id`는 필수다. 브랜치 이름은 `feature/{{.TicketPrefix}}-XXX` 또는 slug가 있으면 `feature/{{.TicketPrefix}}-XXX-slug`다.
 4. 서버가 없거나 `ERR_DIRTY_WORKTREE`면 블랙리스트 밖 변경을 먼저 치운다. `TODO.md`만 바뀌었으면 엔진이 작업 트리 내용을 `.git/mcp-todo.bak`에 보관한 뒤 브랜치 전환 후 복원한다. 이어서 `fetch`, 필요 시 `checkout main`, `pull --ff-only`, `checkout -b feature/{{.TicketPrefix}}-XXX` 또는 기존 브랜치 `checkout`을 한다. `add`, `commit`, `push`, `branch -d`는 하지 않는다. 전역 `git stash`는 사용하지 않는다.
+
+표준 프롬프트: [1] Plan 수립 요청
+
+```text
+TODO.md의 In Progress 작업을 진행해 주세요.
+Plan 프로토콜에 따라 Scope, Action Items, Archiving Target을 먼저 제시하고, Spec에 누락이나 오류가 없는지 점검해 주세요 (코드 수정 금지).
+```
+
+표준 프롬프트: [2] 착수 승인
+
+```text
+승인합니다. 진행하세요.
+작업 완료 후 실행 과정, 검증 결과, 특이사항을 단일 마크다운 블록으로 보고해 주세요.
+```
 
 ### Phase 3
 
@@ -130,12 +150,32 @@ flowchart TD
 
 사람이 런타임을 실측한다. 실패하면 같은 Spec으로 수정을 지시한다. 통과하면 마감을 승인한다.
 
+표준 프롬프트: [3-A] 실측 반려 (Fail)
+
+```text
+실측 검증 실패: [구체적 결함 현상 서술]
+원인을 점검하고 수정한 뒤 다시 보고해 주세요.
+```
+
+표준 프롬프트: [3-B] 마감 승인 (Pass)
+
+```text
+실측 검증 완료되었습니다. 마감 처리하세요.
+마감 처리 내역과 터미널 실행 명령을 단일 마크다운 블록으로 제시해 주세요.
+```
+
 ### Phase 5
 
 1. 새 지식 문서가 필요하면 만든다. 기존 핸드북 개정이면 새 파일을 만들지 않는다.
 2. Spec 0절의 `[신규]` 용어는 `GLS - Project Glossary.md`에 한 번만 추가한다.
 3. 마감 승인 뒤에만 `hub_finalize_spec`을 호출한다. 인자는 `ticket_id`, `commit_type`, `commit_scope`, `commit_summary`다.
 4. 사람이 워크스페이스 루트에서 `mcp-hub -close-ticket`을 실행한다. 커밋 메시지는 `{commit_type}({commit_scope}): [{ticket_id}] {commit_summary}`다. `TODO.md` 커밋 메시지는 `docs(todo): mark {ticket_id} as done`이다.
+
+표준 프롬프트: 티켓 마감 및 브랜치 정리
+
+```text
+mcp-hub -close-ticket
+```
 
 ## 4. 예외
 

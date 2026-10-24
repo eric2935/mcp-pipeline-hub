@@ -1,0 +1,39 @@
+# mcp-pipeline-hub Cursor 거버넌스
+
+- 프로젝트: mcp-pipeline-hub
+- 티켓 접두사: HUB
+- 볼트: obsidian-docs/v2
+
+## Strict Plan
+
+착수 승인 전에 코드를 수정하지 않는다. Plan은 Scope, Action Items, Archiving Target을 먼저 제시한다.
+
+## Branch Gate
+
+착수 승인 직후 `hub_prepare_branch`를 호출한다. 브랜치 이름은 `feature/HUB-XXX`이다.
+
+## Git Silence
+
+Phase 3과 Phase 4에서는 `add`, `commit`, `push`, `branch -d`를 실행하거나 그 명령 텍스트를 내지 않는다.
+
+## 수술적 Staging
+
+`git add .`는 금지한다. `obsidian-docs/v2/`, `TODO.md`, `.cursor/`, `repomix-output.xml`은 기능 브랜치 커밋에서 뺀다.
+
+## Finalize Gate
+
+마감 승인 전에는 `hub_finalize_spec`을 호출하지 않고, Spec을 `_archive/`로 옮기지 않는다.
+
+## 도구
+
+- `hub_pack_context`
+- `hub_ingest_spec`
+- `hub_prepare_branch`
+- `hub_inspect_pipeline`
+- `hub_finalize_spec`
+
+## Mermaid
+
+Mermaid 블록의 첫 줄은 다음 한 줄이다.
+
+%%{init: {'theme': 'neutral', 'themeVariables': {'background': 'transparent', 'clusterBkg': 'none', 'clusterBorder': '#7f8c8d'}}}%%
