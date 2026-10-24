@@ -1,6 +1,7 @@
 package scaffold
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -92,6 +93,102 @@ func TestRenderPreservesPrefixCase(t *testing.T) {
 	manual := string(files["docs/01_SOP (표준운영절차)/표준-업무-매뉴얼.md"])
 	if !strings.Contains(manual, "hub_prepare_branch") || strings.Contains(manual, "obsidian-docs") || strings.Contains(manual, "iems_prepare_branch") {
 		t.Fatal(manual)
+	}
+}
+
+func TestRenderGovernancePack(t *testing.T) {
+	files, err := Render(Context{
+		ProjectName:  "Sample",
+		TicketPrefix: "DEMO",
+		CreatedAt:    "2026-10-24",
+		TargetRoot:   "/tmp/pipeline-demo",
+		VaultDir:     "my-notes",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rules := string(files[".cursorrules"])
+	if strings.Contains(strings.ToLower(rules), "iems") {
+		t.Fatal(rules)
+	}
+	for _, want := range []string{
+		"Sample",
+		"DEMO",
+		"my-notes",
+		"feature/DEMO-XXX",
+		"hub_pack_context",
+		"hub_ingest_spec",
+		"hub_prepare_branch",
+		"hub_inspect_pipeline",
+		"hub_finalize_spec",
+		"%%{init: {'theme': 'neutral', 'themeVariables': {'background': 'transparent', 'clusterBkg': 'none', 'clusterBorder': '#7f8c8d'}}}%%",
+	} {
+		if !strings.Contains(rules, want) {
+			t.Fatalf("missing %s\n%s", want, rules)
+		}
+	}
+	ignore := string(files[".cursorignore"])
+	if !strings.Contains(ignore, "# my-notes/ 는 Cursor가 읽도록 색인에 남긴다.") {
+		t.Fatal(ignore)
+	}
+	for _, line := range strings.Split(ignore, "\n") {
+		trim := strings.TrimSpace(line)
+		if trim == "" || strings.HasPrefix(trim, "#") {
+			continue
+		}
+		if strings.Contains(trim, "my-notes") {
+			t.Fatalf("vault pattern %q", line)
+		}
+	}
+	for _, pattern := range []string{"repomix-output.*", "node_modules/", "dist/", "bin/", "vendor/", "*.pdf", ".git/"} {
+		if !strings.Contains(ignore, pattern) {
+			t.Fatalf("missing %s\n%s", pattern, ignore)
+		}
+	}
+	var pack struct {
+		Output struct {
+			FilePath   string `json:"filePath"`
+			HeaderText string `json:"headerText"`
+		} `json:"output"`
+		Include []string `json:"include"`
+	}
+	if err := json.Unmarshal(files["repomix.config.json"], &pack); err != nil {
+		t.Fatal(err)
+	}
+	if pack.Output.FilePath != "repomix-output.xml" || pack.Output.HeaderText != "Sample" {
+		t.Fatalf("%#v", pack)
+	}
+	if len(pack.Include) != 1 || pack.Include[0] != "**/*" {
+		t.Fatalf("%#v", pack.Include)
+	}
+	repomixIgnore := string(files[".repomixignore"])
+	for _, pattern := range []string{
+		"**/*_test.*",
+		"**/*.spec.*",
+		"**/_archive/**",
+		"my-notes/05_Log/**",
+		"TODO_ARCHIVE.md",
+	} {
+		if !strings.Contains(repomixIgnore, pattern) {
+			t.Fatalf("missing %s\n%s", pattern, repomixIgnore)
+		}
+	}
+
+	quoted, err := Render(Context{
+		ProjectName:  `Qa "Hub"`,
+		TicketPrefix: "DEMO",
+		CreatedAt:    "2026-10-24",
+		TargetRoot:   "/tmp/pipeline-demo",
+		VaultDir:     "my-notes",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(quoted["repomix.config.json"], &pack); err != nil {
+		t.Fatal(err)
+	}
+	if pack.Output.HeaderText != `Qa "Hub"` {
+		t.Fatal(pack.Output.HeaderText)
 	}
 }
 

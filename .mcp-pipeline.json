@@ -1,7 +1,7 @@
 {
   "tool_name": "agentic-mcp-hub",
-  "ticket_prefix": "IEMS",
-  "ticket_pattern": "^IEMS-[0-9]+(?:-[0-9]+)?$",
+  "ticket_prefix": "HUB",
+  "ticket_pattern": "^HUB-[0-9]+(?:-[0-9]+)?$",
   "vault_dir": "obsidian-docs/v2",
   "spec_dir": "03_Spec (구현명세서)",
   "spec_archive_dir": "_archive",
