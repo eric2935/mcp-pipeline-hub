@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"mcp-pipeline-hub/internal/config"
 	"mcp-pipeline-hub/internal/pipeline"
@@ -30,9 +31,11 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	vault := fs.String("vault", "", "vault directory for -init")
 	project := fs.String("project", "", "project name for -init; default is the directory name")
 	force := fs.Bool("force", false, "overwrite existing scaffold files")
+	debugFlag := fs.Bool("debug", false, "write error type, unwrap chain, and context to stderr")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
+	debug := *debugFlag || envDebug()
 	modes := 0
 	if *ingest {
 		modes++
@@ -63,7 +66,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			Force:       *force,
 		})
 		if err != nil {
-			writeCLIError(stderr, err)
+			writeCLIError(stderr, err, debug)
 			return 1
 		}
 		writeInitLog(stderr, report)
@@ -77,12 +80,12 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	hub, err := pipeline.Open(workspace, *configPath)
 	if err != nil {
-		writeCLIError(stderr, err)
+		writeCLIError(stderr, err, debug)
 		return 1
 	}
 	if *closeTicket {
 		if err := hub.CloseTicket(context.Background(), pipeline.CloseIO{In: stdin, Out: stdout, Err: stderr}); err != nil {
-			writeCLIError(stderr, err)
+			writeCLIError(stderr, err, debug)
 			return 1
 		}
 		return 0
@@ -90,7 +93,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if *ingest {
 		out, err := hub.IngestClipboard(context.Background())
 		if err != nil {
-			writeCLIError(stderr, err)
+			writeCLIError(stderr, err, debug)
 			return 1
 		}
 		enc := json.NewEncoder(stdout)
@@ -127,16 +130,68 @@ func writeInitLog(stderr io.Writer, report pipeline.InitReport) {
 	}
 }
 
-func writeCLIError(stderr io.Writer, err error) {
+func envDebug() bool {
+	v := strings.TrimSpace(os.Getenv("MCP_DEBUG"))
+	return strings.EqualFold(v, "1") || strings.EqualFold(v, "true")
+}
+
+func writeCLIError(stderr io.Writer, err error, debug bool) {
+	if err == nil {
+		return
+	}
+	line, code, detail, domain := cliErrorLine(err)
+	fmt.Fprintln(stderr, line)
+	if !debug {
+		return
+	}
+	fmt.Fprintf(stderr, "[DEBUG] error type: %T\n", err)
+	writeUnwrap(stderr, err)
+	if domain {
+		fmt.Fprintf(stderr, "[DEBUG] context: code=%s detail=%s\n", code, detail)
+		return
+	}
+	fmt.Fprintf(stderr, "[DEBUG] context: message=%s\n", oneLine(err.Error()))
+}
+
+func cliErrorLine(err error) (line, code, detail string, domain bool) {
 	var toolErr *pipeline.ToolError
 	if errors.As(err, &toolErr) {
-		fmt.Fprintln(stderr, toolErr.Code)
-		return
+		code = toolErr.Code
+		detail = sanitizeDetail(toolErr.Detail)
+		return formatCodeDetail(code, detail), code, detail, true
 	}
 	var cfgErr *config.Error
 	if errors.As(err, &cfgErr) {
-		fmt.Fprintln(stderr, cfgErr.Code)
+		code = cfgErr.Code
+		detail = sanitizeDetail(cfgErr.Detail)
+		return formatCodeDetail(code, detail), code, detail, true
+	}
+	return oneLine(err.Error()), "", "", false
+}
+
+func formatCodeDetail(code, detail string) string {
+	if detail == "" {
+		return code
+	}
+	return code + ": " + detail
+}
+
+func sanitizeDetail(detail string) string {
+	return oneLine(strings.TrimSpace(detail))
+}
+
+func oneLine(s string) string {
+	return strings.Join(strings.Fields(s), " ")
+}
+
+func writeUnwrap(stderr io.Writer, err error) {
+	next := errors.Unwrap(err)
+	if next == nil {
+		fmt.Fprintln(stderr, "[DEBUG] unwrap: <none>")
 		return
 	}
-	fmt.Fprintln(stderr, err)
+	for seen := 0; next != nil && seen < 16; seen++ {
+		fmt.Fprintf(stderr, "[DEBUG] unwrap: %s\n", oneLine(next.Error()))
+		next = errors.Unwrap(next)
+	}
 }
