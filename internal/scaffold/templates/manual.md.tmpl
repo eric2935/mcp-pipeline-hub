@@ -7,7 +7,7 @@ tags:
   - {{.TicketPrefix}}
 created_at: {{.CreatedAt}}
 updated_at: {{.CreatedAt}}
-version: "2.40"
+version: "2.41"
 summary: "{{.ProjectName}} 직결 파이프라인 사람 절차. 티켓 접두사는 {{.TicketPrefix}}."
 ---
 
@@ -56,7 +56,7 @@ mcp-hub -init -project "{{.ProjectName}}" -prefix "{{.TicketPrefix}}"
 | 환경 | 실행 주체 | 전담 | 금지 |
 | :--- | :--- | :--- | :--- |
 | Cursor Composer | AI | Plan. 착수 승인 후 `hub_prepare_branch`. 코딩, 셸 빌드와 테스트, `hub_inspect_pipeline`. 마감 승인 후에만 `hub_finalize_spec`. | 착수 승인 전 코딩. 검증 전 아카이빙. Phase 3과 4에서 `hub_finalize_spec`. |
-| Local Terminal | 사람 | `mcp-hub -ingest-clipboard`. 실측. `mcp-hub -close-ticket`. | `git add .`. 볼트 staging. 실측 전 커밋. 기능 브랜치에 `TODO.md`. |
+| Local Terminal | 사람 | `mcp-hub -ingest-clipboard`. 실측. `mcp-hub -issue-token`. `mcp-hub -close-ticket`. | `git add .`. 볼트 staging. 실측 전 커밋. 기능 브랜치에 `TODO.md`. |
 | GitHub Web | 원격 | PR, diff 검토, Merge, 원격 브랜치 삭제. | 웹 에디터로 소스 직접 수정. |
 
 MCP 서버 키는 `agentic-mcp-hub`다. 실행 명령은 PATH의 `mcp-hub`다. 도구 ID는 아래 다섯 개다. `hub_verify_pipeline`과 `hub_archive_spec`은 없다. 레거시 이름 `iems_*`는 같은 다섯 도구로 라우팅된다. 도구는 `git commit`과 `git push`를 실행하지 않는다.
@@ -67,7 +67,7 @@ MCP 서버 키는 `agentic-mcp-hub`다. 실행 명령은 PATH의 `mcp-hub`다. �
 | 1 | `hub_ingest_spec` | 사람 기본 명령은 `mcp-hub -ingest-clipboard`. Spec 파일을 쓰고, 티켓이 없으면 `## In Progress` 바로 아래에 한 줄. | Copy code 직후 | 이미 있는 티켓 줄 중복 삽입 |
 | 2 | `hub_prepare_branch` | `feature/{{.TicketPrefix}}-XXX` 생성 또는 전환. 기본 `sync_main=true` | 착수 승인 직후. `ticket_id` 필수 | `commit`, `push`. 블랙리스트 밖 추적 변경이면 `ERR_DIRTY_WORKTREE` |
 | 3 | `hub_inspect_pipeline` | 현재 브랜치, 활성 Spec, stageable 파일 | 로컬 빌드와 테스트 후 | 빌드와 테스트 실행. Spec 이동 |
-| 5 | `hub_finalize_spec` | `status: completed`와 커밋 필드 세 개를 기록하고 `_archive/`로 이동. 명령 텍스트는 `mcp-hub -close-ticket` 한 줄 | 마감 승인 직후. 브랜치가 `feature/{티켓ID}`일 것 | Phase 3과 4 호출. `git add`, `commit`, `push` 실행 |
+| 5 | `hub_finalize_spec` | `finalize_token`을 검증한 뒤 `status: completed`와 커밋 필드 세 개를 기록하고 `_archive/`로 이동. 명령 텍스트는 `mcp-hub -close-ticket` 한 줄 | 마감 승인 직후. 브랜치가 `feature/{티켓ID}`이고 사람이 발급한 토큰이 있을 것 | Phase 3과 4 호출. 토큰 없이 호출. `git add`, `commit`, `push` 실행 |
 
 `-init`이 쓰는 dirty 통과 경로: `TODO.md`, `repomix-output.xml`, `{{.VaultDir}}/`, `.cursor/`. 커밋에서 빼는 경로: `{{.VaultDir}}/`, `TODO.md`, `.cursor/`, `repomix-output.xml`.
 
@@ -148,7 +148,7 @@ Plan 프로토콜에 따라 Scope, Action Items, Archiving Target을 먼저 제�
 
 ### Phase 4
 
-사람이 런타임을 실측한다. 실패하면 같은 Spec으로 수정을 지시한다. 통과하면 마감을 승인한다.
+사람이 런타임을 실측한다. 실패하면 같은 Spec으로 수정을 지시한다. 통과하면 워크스페이스 루트에서 `mcp-hub -issue-token {티켓ID}`를 실행한다. 별칭은 `-token`이다. stdout의 `tok_` 토큰을 마감 승인 프롬프트에 붙인다. 저장 파일은 `.git/mcp-finalize-tokens/{티켓ID}.json`이고 TTL은 300초다. 클립보드 복사가 실패해도 stdout 토큰은 유효하다.
 
 표준 프롬프트: [3-A] 실측 반려 (Fail)
 
@@ -168,7 +168,7 @@ Plan 프로토콜에 따라 Scope, Action Items, Archiving Target을 먼저 제�
 
 1. 새 지식 문서가 필요하면 만든다. 기존 핸드북 개정이면 새 파일을 만들지 않는다.
 2. Spec 0절의 `[신규]` 용어는 `GLS - Project Glossary.md`에 한 번만 추가한다.
-3. 마감 승인 뒤에만 `hub_finalize_spec`을 호출한다. 인자는 `ticket_id`, `commit_type`, `commit_scope`, `commit_summary`다.
+3. 마감 승인 뒤에만 `hub_finalize_spec`을 호출한다. 인자는 `ticket_id`, `finalize_token`, `commit_type`, `commit_scope`, `commit_summary`다. `finalize_token`은 사람이 방금 발급한 일회용 토큰이다.
 4. 사람이 워크스페이스 루트에서 `mcp-hub -close-ticket`을 실행한다. 커밋 메시지는 `{commit_type}({commit_scope}): [{ticket_id}] {commit_summary}`다. `TODO.md` 커밋 메시지는 `docs(todo): mark {ticket_id} as done`이다.
 
 표준 프롬프트: 티켓 마감 및 브랜치 정리
@@ -186,7 +186,11 @@ mcp-hub -close-ticket
 | `ERR_DIRTY_WORKTREE` | 블랙리스트 밖 추적 파일이 수정됨 | 그 파일을 커밋하거나 치운 뒤 다시 호출한다. |
 | `ERR_INVALID_BRANCH` | `feature/{티켓ID}`가 아닌 브랜치에서 finalize | 브랜치를 맞춘 뒤에만 호출한다. |
 | `ERR_SPEC_NOT_ACTIVE` | 활성 Spec이 `03_Spec` 루트에 없음 | Spec을 루트에 둔 뒤 마감 승인 후에만 다시 호출한다. |
-| `ERR_SPEC_AMBIGUOUS` | 같은 티켓 Spec이 둘 이상 | 하나만 남긴다. |
+| `ERR_SPEC_AMBIGUOUS` | 같은 티켓 Spec이 둘 이상 | 하나만 남긴다. 유효한 토큰 파일은 그대로 둔다. |
+| `ERR_TOKEN_REQUIRED` | `finalize_token`이 비어 있음 | 사람이 `-issue-token`으로 발급한 토큰을 넣어 다시 호출한다. |
+| `ERR_TOKEN_NOT_FOUND` | 토큰 파일이 없음 | 다시 발급한다. 한 번 성공한 토큰은 재사용할 수 없다. |
+| `ERR_TOKEN_EXPIRED` | 발급 후 300초가 지남 | 파일을 지운 상태다. 다시 발급한다. |
+| `ERR_TOKEN_INVALID` | 해시가 다르거나 JSON이 손상됨 | 저장 파일은 남는다. 올바른 토큰을 넣거나 다시 발급한다. |
 | `ERR_STASH_FAILED` | `.git/mcp-todo.bak` 복원 충돌 | `TODO.md`의 충돌 마커를 손으로 지운다. `reset --hard`는 쓰지 않는다. |
 
 ## 5. 표기

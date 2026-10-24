@@ -9,6 +9,44 @@ import (
 	"testing"
 )
 
+func TestClipboardWriteCommand(t *testing.T) {
+	name, args, err := clipboardWriteCommand("darwin", func(string) (string, error) {
+		return "", os.ErrNotExist
+	})
+	if err != nil || name != "pbcopy" || args != nil {
+		t.Fatalf("%s %v %v", name, args, err)
+	}
+	name, args, err = clipboardWriteCommand("windows", func(string) (string, error) {
+		return "", os.ErrNotExist
+	})
+	if err != nil || name != "powershell" || len(args) != 3 || args[2] != "$input | Set-Clipboard" {
+		t.Fatalf("%s %v %v", name, args, err)
+	}
+	name, args, err = clipboardWriteCommand("linux", func(bin string) (string, error) {
+		if bin == "wl-copy" {
+			return bin, nil
+		}
+		return "", os.ErrNotExist
+	})
+	if err != nil || name != "wl-copy" || args != nil {
+		t.Fatalf("%s %v %v", name, args, err)
+	}
+	name, args, err = clipboardWriteCommand("linux", func(bin string) (string, error) {
+		if bin == "xclip" {
+			return bin, nil
+		}
+		return "", os.ErrNotExist
+	})
+	if err != nil || name != "xclip" || strings.Join(args, " ") != "-selection clipboard" {
+		t.Fatalf("%s %v %v", name, args, err)
+	}
+	if _, _, err = clipboardWriteCommand("linux", func(string) (string, error) {
+		return "", os.ErrNotExist
+	}); err == nil || !strings.Contains(err.Error(), "ERR_CLIPBOARD") {
+		t.Fatal(err)
+	}
+}
+
 func TestClipboardCommandLinuxFallback(t *testing.T) {
 	name, args, err := clipboardCommand("linux", func(bin string) (string, error) {
 		if bin == "wl-paste" {

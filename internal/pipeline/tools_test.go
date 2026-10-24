@@ -301,7 +301,11 @@ func TestFinalizeBranchBindingAndArchive(t *testing.T) {
 		t.Fatal(err)
 	}
 	gitRun(t, dir, "checkout", "-b", "feature/IEMS-451")
-	out, err := h.Finalize(context.Background(), finalizeIn{TicketID: "IEMS-451", CommitType: "feat", CommitScope: "Tooling", CommitSummary: "hub"})
+	token, err := h.IssueFinalizeToken("IEMS-451")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := h.Finalize(context.Background(), finalizeIn{TicketID: "IEMS-451", FinalizeToken: token, CommitType: "feat", CommitScope: "Tooling", CommitSummary: "hub"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -319,6 +323,13 @@ func TestFinalizeBranchBindingAndArchive(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(defaultSpecRel()), "SPEC - [IEMS-451] [Tooling] Hub.md")); !os.IsNotExist(err) {
 		t.Fatal("active spec remains", err)
 	}
+	if _, err := os.Stat(finalizeTokenPathFor(dir, "IEMS-451")); !os.IsNotExist(err) {
+		t.Fatal("token file remains", err)
+	}
+	_, err = h.Finalize(context.Background(), finalizeIn{TicketID: "IEMS-451", FinalizeToken: token, CommitType: "feat", CommitScope: "Tooling", CommitSummary: "hub"})
+	if err == nil || !strings.Contains(err.Error(), "ERR_TOKEN_NOT_FOUND") {
+		t.Fatal(err)
+	}
 }
 
 func TestFinalizeAmbiguousAndSurgical(t *testing.T) {
@@ -327,9 +338,16 @@ func TestFinalizeAmbiguousAndSurgical(t *testing.T) {
 	writeSpec(t, dir, "SPEC - [IEMS-451] [Tooling] A.md")
 	writeSpec(t, dir, "SPEC - [IEMS-451] [Tooling] B.md")
 	h := New(dir)
-	_, err := h.Finalize(context.Background(), finalizeIn{TicketID: "IEMS-451", CommitType: "feat", CommitScope: "Tooling", CommitSummary: "hub"})
+	token, err := h.IssueFinalizeToken("IEMS-451")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = h.Finalize(context.Background(), finalizeIn{TicketID: "IEMS-451", FinalizeToken: token, CommitType: "feat", CommitScope: "Tooling", CommitSummary: "hub"})
 	if err == nil || !strings.Contains(err.Error(), "ERR_SPEC_AMBIGUOUS") {
 		t.Fatal(err)
+	}
+	if _, err := os.Stat(finalizeTokenPathFor(dir, "IEMS-451")); err != nil {
+		t.Fatal("ambiguous spec burned the token", err)
 	}
 	os.Remove(filepath.Join(dir, filepath.FromSlash(defaultSpecRel()), "SPEC - [IEMS-451] [Tooling] B.md"))
 	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("change\n"), 0o644); err != nil {
@@ -338,7 +356,7 @@ func TestFinalizeAmbiguousAndSurgical(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "TODO.md"), []byte("todo\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	out, err := h.Finalize(context.Background(), finalizeIn{TicketID: "IEMS-451", CommitType: "feat", CommitScope: "UI/Collector", CommitSummary: "hub"})
+	out, err := h.Finalize(context.Background(), finalizeIn{TicketID: "IEMS-451", FinalizeToken: token, CommitType: "feat", CommitScope: "UI/Collector", CommitSummary: "hub"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -457,6 +475,16 @@ func TestDefinitionsIncludeGateText(t *testing.T) {
 	}
 	if !strings.Contains(by["hub_finalize_spec"], "마감 승인") {
 		t.Fatal(by["hub_finalize_spec"])
+	}
+	var required any
+	for _, d := range defs {
+		if d.Name == "hub_finalize_spec" {
+			required = d.InputSchema["required"]
+		}
+	}
+	req, ok := required.([]string)
+	if !ok || strings.Join(req, ",") != "ticket_id,finalize_token,commit_type,commit_scope,commit_summary" {
+		t.Fatalf("%#v", required)
 	}
 	if _, ok := by["iems_prepare_branch"]; ok {
 		t.Fatal("legacy name must not be advertised")

@@ -15,6 +15,8 @@ import (
 	"mcp-pipeline-hub/internal/protocol"
 )
 
+var copyToClipboard = pipeline.WriteClipboard
+
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
@@ -26,6 +28,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	configPath := fs.String("config", "", "pipeline config path; default is <root>/.mcp-pipeline.json")
 	ingest := fs.Bool("ingest-clipboard", false, "ingest a Spec from the OS clipboard")
 	closeTicket := fs.Bool("close-ticket", false, "commit, push, and finish the current feature branch after the human merges")
+	issueToken := fs.String("issue-token", "", "issue a one-time finalize token for a ticket id")
+	tokenAlias := fs.String("token", "", "alias of -issue-token")
 	initProject := fs.Bool("init", false, "create pipeline files in the workspace")
 	prefix := fs.String("prefix", "", "ticket prefix for -init; default PROJ")
 	vault := fs.String("vault", "", "vault directory for -init")
@@ -36,6 +40,16 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 2
 	}
 	debug := *debugFlag || envDebug()
+	issueA := strings.TrimSpace(*issueToken)
+	issueB := strings.TrimSpace(*tokenAlias)
+	if issueA != "" && issueB != "" && issueA != issueB {
+		fmt.Fprintln(stderr, "mcp-hub: -issue-token and -token values differ")
+		return 2
+	}
+	issueID := issueA
+	if issueID == "" {
+		issueID = issueB
+	}
 	modes := 0
 	if *ingest {
 		modes++
@@ -46,8 +60,11 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if *initProject {
 		modes++
 	}
+	if issueID != "" {
+		modes++
+	}
 	if modes > 1 {
-		fmt.Fprintln(stderr, "mcp-hub: -init, -ingest-clipboard, and -close-ticket are mutually exclusive")
+		fmt.Fprintln(stderr, "mcp-hub: -init, -ingest-clipboard, -close-ticket, and -issue-token are mutually exclusive")
 		return 2
 	}
 	if (*prefix != "" || *vault != "" || *project != "" || *force) && !*initProject {
@@ -101,6 +118,18 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		if err := enc.Encode(out); err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
+		}
+		return 0
+	}
+	if issueID != "" {
+		token, err := hub.IssueFinalizeToken(issueID)
+		if err != nil {
+			writeCLIError(stderr, err, debug)
+			return 1
+		}
+		fmt.Fprintln(stdout, token)
+		if err := copyToClipboard(context.Background(), token); err != nil {
+			fmt.Fprintln(stderr, "WARN: clipboard copy failed")
 		}
 		return 0
 	}
