@@ -14,7 +14,7 @@ func TestInitCreatesSkeletonAndSkipsExisting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{".mcp-pipeline.json", "TODO.md", ".cursor/mcp.json", ".gitignore"} {
+	for _, name := range []string{".mcp-pipeline.json", "TODO.md", ".cursor/mcp.json", ".gitignore", ".cursorrules", ".cursorignore", "repomix.config.json", ".repomixignore"} {
 		if !containsString(report.Created, name) {
 			t.Fatalf("created %#v missing %s", report.Created, name)
 		}
@@ -63,6 +63,11 @@ func TestInitCreatesSkeletonAndSkipsExisting(t *testing.T) {
 	}
 	if len(again.Created) != 0 || len(again.Overwritten) != 0 {
 		t.Fatalf("second run created %#v overwritten %#v", again.Created, again.Overwritten)
+	}
+	for _, name := range []string{".cursorrules", ".cursorignore", "repomix.config.json", ".repomixignore"} {
+		if !containsString(again.Skipped, name) {
+			t.Fatalf("skipped %#v missing %s", again.Skipped, name)
+		}
 	}
 	after, err := os.ReadFile(filepath.Join(dir, ".mcp-pipeline.json"))
 	if err != nil {
@@ -190,6 +195,11 @@ func TestInitForceOverwritesAndKeepsGitignore(t *testing.T) {
 	}
 	if !containsString(again.Overwritten, "test-docs/01_SOP (표준운영절차)/표준-업무-매뉴얼.md") {
 		t.Fatalf("%#v", again.Overwritten)
+	}
+	for _, name := range []string{".cursorrules", ".cursorignore", "repomix.config.json", ".repomixignore"} {
+		if !containsString(again.Overwritten, name) {
+			t.Fatalf("overwritten %#v missing %s", again.Overwritten, name)
+		}
 	}
 	second, err := os.ReadFile(manual)
 	if err != nil {

@@ -69,12 +69,16 @@ func Render(ctx Context) (map[string][]byte, error) {
 		return nil, err
 	}
 	rels := map[string]string{
-		"config.json.tmpl":     configRel,
-		"todo.md.tmpl":         todoRel,
-		"cursor_mcp.json.tmpl": cursorRel,
-		"manual.md.tmpl":       vaultFile(ctx.VaultDir, "01_SOP (표준운영절차)", "표준-업무-매뉴얼.md"),
-		"taxonomy.md.tmpl":     vaultFile(ctx.VaultDir, "01_SOP (표준운영절차)", "SOP - 지식창고 분류 체계 (Taxonomy).md"),
-		"glossary.md.tmpl":     vaultFile(ctx.VaultDir, "06_Cheatsheet", "GLS - Project Glossary.md"),
+		"config.json.tmpl":         configRel,
+		"todo.md.tmpl":             todoRel,
+		"cursor_mcp.json.tmpl":     cursorRel,
+		"cursorrules.tmpl":         ".cursorrules",
+		"cursorignore.tmpl":        ".cursorignore",
+		"repomix.config.json.tmpl": "repomix.config.json",
+		"repomixignore.tmpl":       ".repomixignore",
+		"manual.md.tmpl":           vaultFile(ctx.VaultDir, "01_SOP (표준운영절차)", "표준-업무-매뉴얼.md"),
+		"taxonomy.md.tmpl":         vaultFile(ctx.VaultDir, "01_SOP (표준운영절차)", "SOP - 지식창고 분류 체계 (Taxonomy).md"),
+		"glossary.md.tmpl":         vaultFile(ctx.VaultDir, "06_Cheatsheet", "GLS - Project Glossary.md"),
 	}
 	out := make(map[string][]byte, len(rels))
 	names := make([]string, 0, len(rels))
