@@ -13,7 +13,36 @@ import (
 
 	"mcp-pipeline-hub/internal/config"
 	"mcp-pipeline-hub/internal/pipeline"
+	"mcp-pipeline-hub/internal/protocol"
 )
+
+func TestVersionFlag(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"-version"}, strings.NewReader(""), &stdout, &stderr)
+	if code != 0 || stdout.String() != "mcp-hub "+protocol.ServerVersion+"\n" || stderr.Len() != 0 {
+		t.Fatalf("%d stdout %q stderr %s", code, stdout.String(), stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	missing := filepath.Join(t.TempDir(), "missing.json")
+	code = run([]string{"-version", "-config", missing}, strings.NewReader(""), &stdout, &stderr)
+	if code != 0 || stdout.String() != "mcp-hub "+protocol.ServerVersion+"\n" || stderr.Len() != 0 {
+		t.Fatalf("%d stdout %q stderr %s", code, stdout.String(), stderr.String())
+	}
+	for _, args := range [][]string{
+		{"-version", "-init"},
+		{"-version", "-close-ticket"},
+		{"-version", "-ingest-clipboard"},
+		{"-version", "-issue-token", "HUB-008"},
+	} {
+		stdout.Reset()
+		stderr.Reset()
+		code = run(args, strings.NewReader(""), &stdout, &stderr)
+		if code != 2 || !strings.Contains(stderr.String(), "mutually exclusive") || stdout.Len() != 0 {
+			t.Fatalf("%v %d stdout %q stderr %s", args, code, stdout.String(), stderr.String())
+		}
+	}
+}
 
 func TestCloseTicketFlagSkipsServerRoot(t *testing.T) {
 	dir := t.TempDir()
