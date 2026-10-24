@@ -1,0 +1,7 @@
+{
+  "output": {
+    "filePath": "repomix-output.xml",
+    "headerText": "mcp-pipeline-hub"
+  },
+  "include": ["**/*"]
+}
