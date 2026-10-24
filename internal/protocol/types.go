@@ -5,8 +5,10 @@ import "encoding/json"
 const (
 	ProtocolDefault = "2024-11-05"
 	ServerName      = "agentic-mcp-hub"
-	ServerVersion   = "0.1.0"
 )
+
+// ServerVersion is the MCP serverInfo version. It is a var so release builds can set it with -ldflags -X.
+var ServerVersion = "0.1.0"
 
 // ToolDef is one entry in tools/list.
 type ToolDef struct {
