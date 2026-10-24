@@ -1,3 +1,3 @@
-module iems/mcp-hub
+module mcp-pipeline-hub
 
 go 1.26.5

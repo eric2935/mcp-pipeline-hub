@@ -28,7 +28,7 @@ mcp-hub -init -project "{{.ProjectName}}" -prefix "{{.TicketPrefix}}"
 
 - `-prefix`를 생략하면 `PROJ`다. 접두사 대소문자는 입력 그대로다.
 - `-project`를 생략하면 대상 디렉터리 이름이다.
-- `-vault` 기본값은 `obsidian-docs/v2`다.
+- `-vault`를 생략하면 기본 볼트를 쓴다. 이 프로젝트의 볼트는 `{{.VaultDir}}`다.
 - 이미 있는 파일은 stderr `[SKIP]`이고 내용은 유지된다. `-force`면 `[OVERWRITE]`다.
 - `.gitignore`는 `-force`여도 통째로 덮어쓰지 않고, 없는 줄만 추가한다.
 - `.cursor/mcp.json`의 `command`는 `mcp-hub`다. `args`는 `-root`와 워크스페이스 절대경로다.
@@ -36,40 +36,40 @@ mcp-hub -init -project "{{.ProjectName}}" -prefix "{{.TicketPrefix}}"
 
 ## 1. 목적 및 원칙
 
-이 문서는 Cursor가 승인 없이 코드를 수정하지 못하게 하고, 지식은 `obsidian-docs/`에, 코드는 GitHub PR로 남기는 절차다.
+이 문서는 Cursor가 승인 없이 코드를 수정하지 못하게 하고, 지식은 `{{.VaultDir}}/`에, 코드는 GitHub PR로 남기는 절차다.
 
 ### 1.1 시작 전 확인
 
-1. `obsidian-docs/`가 물리 디렉터리인지 확인한다.
+1. `{{.VaultDir}}/`가 물리 디렉터리인지 확인한다.
 2. 작업 보드는 루트 `TODO.md`만 사용한다.
 3. 저장소에 `.git`이 있고 `main`이 원격과 연결되어 있는지 확인한다.
 4. 파이프라인 4대 원칙:
-    1. 착수 승인 전에는 코딩하지 않는다. 승인 직후 Cursor는 `iems_prepare_branch`로 `feature/{{.TicketPrefix}}-XXX`를 만들거나 그 브랜치로 전환한다. 기본 `sync_main`은 true다. `add`, `commit`, `push`, `branch -d`는 사람이 마감 후에 한다.
+    1. 착수 승인 전에는 코딩하지 않는다. 승인 직후 Cursor는 `hub_prepare_branch`로 `feature/{{.TicketPrefix}}-XXX`를 만들거나 그 브랜치로 전환한다. 기본 `sync_main`은 true다. `add`, `commit`, `push`, `branch -d`는 사람이 마감 후에 한다.
     2. 지연 아카이빙 (Delayed Archiving): 사람 실측 전에는 Spec을 `_archive/`로 옮기지 않는다.
-    3. 수술적 Staging (Surgical Staging): `git add .`는 금지한다. `obsidian-docs/`와 `TODO.md`는 기능 브랜치 커밋에 넣지 않는다.
+    3. 수술적 Staging (Surgical Staging): `git add .`는 금지한다. `{{.VaultDir}}/`와 `TODO.md`는 기능 브랜치 커밋에 넣지 않는다.
     4. 비교와 SOP는 마크다운 표를 우선한다. 분기가 있을 때만 투명 헤더 Mermaid를 쓴다.
 
-`obsidian-docs/`는 `.gitignore`로 Git 추적에서 제외한다.
+`{{.VaultDir}}/`는 `.gitignore`로 Git 추적에서 제외한다.
 
 ### 1.2 역할과 책임 (Roles and Responsibilities)
 
 | 환경 | 실행 주체 | 전담 | 금지 |
 | :--- | :--- | :--- | :--- |
-| Cursor Composer | AI | Plan. 착수 승인 후 `iems_prepare_branch`. 코딩, 셸 빌드와 테스트, `iems_inspect_pipeline`. 마감 승인 후에만 `iems_finalize_spec`. | 착수 승인 전 코딩. 검증 전 아카이빙. Phase 3과 4에서 `iems_finalize_spec`. |
+| Cursor Composer | AI | Plan. 착수 승인 후 `hub_prepare_branch`. 코딩, 셸 빌드와 테스트, `hub_inspect_pipeline`. 마감 승인 후에만 `hub_finalize_spec`. | 착수 승인 전 코딩. 검증 전 아카이빙. Phase 3과 4에서 `hub_finalize_spec`. |
 | Local Terminal | 사람 | `mcp-hub -ingest-clipboard`. 실측. `mcp-hub -close-ticket`. | `git add .`. 볼트 staging. 실측 전 커밋. 기능 브랜치에 `TODO.md`. |
 | GitHub Web | 원격 | PR, diff 검토, Merge, 원격 브랜치 삭제. | 웹 에디터로 소스 직접 수정. |
 
-MCP 서버 키는 `agentic-mcp-hub`다. 실행 명령은 PATH의 `mcp-hub`다. 도구 ID는 아래 다섯 개다. `iems_verify_pipeline`과 `iems_archive_spec`은 없다. 도구는 `git commit`과 `git push`를 실행하지 않는다.
+MCP 서버 키는 `agentic-mcp-hub`다. 실행 명령은 PATH의 `mcp-hub`다. 도구 ID는 아래 다섯 개다. `hub_verify_pipeline`과 `hub_archive_spec`은 없다. 레거시 이름 `iems_*`는 같은 다섯 도구로 라우팅된다. 도구는 `git commit`과 `git push`를 실행하지 않는다.
 
 | Phase | 도구 | 하는 일 | 호출 조건 | 하지 않는 일 |
 | :--- | :--- | :--- | :--- | :--- |
-| 1 | `iems_pack_context` | `npx repomix --no-gitignore`. 제한 30초. `ssot_manifests`의 각 경로 문자열이 산출물에 있어야 한다. 목록이 비어 있으면 그 검사는 통과한다. | 코드 M 컨텍스트가 필요할 때. 선택 | Git 쓰기 |
-| 1 | `iems_ingest_spec` | 사람 기본 명령은 `mcp-hub -ingest-clipboard`. Spec 파일을 쓰고, 티켓이 없으면 `## In Progress` 바로 아래에 한 줄. | Copy code 직후 | 이미 있는 티켓 줄 중복 삽입 |
-| 2 | `iems_prepare_branch` | `feature/{{.TicketPrefix}}-XXX` 생성 또는 전환. 기본 `sync_main=true` | 착수 승인 직후. `ticket_id` 필수 | `commit`, `push`. 블랙리스트 밖 추적 변경이면 `ERR_DIRTY_WORKTREE` |
-| 3 | `iems_inspect_pipeline` | 현재 브랜치, 활성 Spec, stageable 파일 | 로컬 빌드와 테스트 후 | 빌드와 테스트 실행. Spec 이동 |
-| 5 | `iems_finalize_spec` | `status: completed`와 커밋 필드 세 개를 기록하고 `_archive/`로 이동. 명령 텍스트는 `mcp-hub -close-ticket` 한 줄 | 마감 승인 직후. 브랜치가 `feature/{티켓ID}`일 것 | Phase 3과 4 호출. `git add`, `commit`, `push` 실행 |
+| 1 | `hub_pack_context` | `npx repomix --no-gitignore`. 제한 30초. `ssot_manifests`의 각 경로 문자열이 산출물에 있어야 한다. 목록이 비어 있으면 그 검사는 통과한다. | 코드 M 컨텍스트가 필요할 때. 선택 | Git 쓰기 |
+| 1 | `hub_ingest_spec` | 사람 기본 명령은 `mcp-hub -ingest-clipboard`. Spec 파일을 쓰고, 티켓이 없으면 `## In Progress` 바로 아래에 한 줄. | Copy code 직후 | 이미 있는 티켓 줄 중복 삽입 |
+| 2 | `hub_prepare_branch` | `feature/{{.TicketPrefix}}-XXX` 생성 또는 전환. 기본 `sync_main=true` | 착수 승인 직후. `ticket_id` 필수 | `commit`, `push`. 블랙리스트 밖 추적 변경이면 `ERR_DIRTY_WORKTREE` |
+| 3 | `hub_inspect_pipeline` | 현재 브랜치, 활성 Spec, stageable 파일 | 로컬 빌드와 테스트 후 | 빌드와 테스트 실행. Spec 이동 |
+| 5 | `hub_finalize_spec` | `status: completed`와 커밋 필드 세 개를 기록하고 `_archive/`로 이동. 명령 텍스트는 `mcp-hub -close-ticket` 한 줄 | 마감 승인 직후. 브랜치가 `feature/{티켓ID}`일 것 | Phase 3과 4 호출. `git add`, `commit`, `push` 실행 |
 
-`-init`이 쓰는 dirty 통과 경로: `TODO.md`, `repomix-output.xml`, `obsidian-docs/`, `.cursor/`. 커밋에서 빼는 경로: `obsidian-docs/`, `TODO.md`, `.cursor/`, `repomix-output.xml`.
+`-init`이 쓰는 dirty 통과 경로: `TODO.md`, `repomix-output.xml`, `{{.VaultDir}}/`, `.cursor/`. 커밋에서 빼는 경로: `{{.VaultDir}}/`, `TODO.md`, `.cursor/`, `repomix-output.xml`.
 
 ### 1.3 용어집 대조
 
@@ -87,7 +87,7 @@ flowchart TD
     subgraph P2 ["Phase 2"]
         C --> D["Cursor: Plan"]
         D --> F["사람: 착수 승인"]
-        F --> E["iems_prepare_branch"]
+        F --> E["hub_prepare_branch"]
     end
     subgraph P3 ["Phase 3"]
         E --> G["구현과 로컬 테스트"]
@@ -99,7 +99,7 @@ flowchart TD
         I -- "Pass" --> J["마감 승인"]
     end
     subgraph P5 ["Phase 5"]
-        J --> K["iems_finalize_spec"]
+        J --> K["hub_finalize_spec"]
         K --> L["mcp-hub -close-ticket"]
     end
 ```
@@ -117,13 +117,13 @@ flowchart TD
 
 1. 티켓마다 새 채팅에서 Plan을 요청한다. 코드 수정 전에 Scope, Action Items, Archiving Target을 받는다.
 2. 사람이 착수를 승인한다.
-3. Cursor가 `iems_prepare_branch`를 호출한다. `ticket_id`는 필수다. 브랜치 이름은 `feature/{{.TicketPrefix}}-XXX` 또는 slug가 있으면 `feature/{{.TicketPrefix}}-XXX-slug`다.
-4. 서버가 없거나 `ERR_DIRTY_WORKTREE`면 블랙리스트 밖 변경을 먼저 치운다. `TODO.md`만 바뀌었으면 `git stash push -m iems-mcp-hub -- TODO.md`로 빼 둔 뒤 `fetch`, 필요 시 `checkout main`, `pull --ff-only`, `checkout -b feature/{{.TicketPrefix}}-XXX` 또는 기존 브랜치 `checkout`을 한다. `add`, `commit`, `push`, `branch -d`는 하지 않는다.
+3. Cursor가 `hub_prepare_branch`를 호출한다. `ticket_id`는 필수다. 브랜치 이름은 `feature/{{.TicketPrefix}}-XXX` 또는 slug가 있으면 `feature/{{.TicketPrefix}}-XXX-slug`다.
+4. 서버가 없거나 `ERR_DIRTY_WORKTREE`면 블랙리스트 밖 변경을 먼저 치운다. `TODO.md`만 바뀌었으면 엔진이 작업 트리 내용을 `.git/mcp-todo.bak`에 보관한 뒤 브랜치 전환 후 복원한다. 이어서 `fetch`, 필요 시 `checkout main`, `pull --ff-only`, `checkout -b feature/{{.TicketPrefix}}-XXX` 또는 기존 브랜치 `checkout`을 한다. `add`, `commit`, `push`, `branch -d`는 하지 않는다. 전역 `git stash`는 사용하지 않는다.
 
 ### Phase 3
 
-1. 기능 브랜치에서 구현하고 로컬 빌드와 테스트를 셸로 실행한다. `iems_inspect_pipeline`은 빌드를 대신하지 않는다.
-2. 구현이 끝나도 `add`, `commit`, `push`, `branch -d`를 실행하거나 그 텍스트를 내지 않는다. `iems_finalize_spec`은 호출하지 않는다.
+1. 기능 브랜치에서 구현하고 로컬 빌드와 테스트를 셸로 실행한다. `hub_inspect_pipeline`은 빌드를 대신하지 않는다.
+2. 구현이 끝나도 `add`, `commit`, `push`, `branch -d`를 실행하거나 그 텍스트를 내지 않는다. `hub_finalize_spec`은 호출하지 않는다.
 3. Spec은 `03_Spec (구현명세서)/` 루트에 둔다.
 
 ### Phase 4
@@ -134,7 +134,7 @@ flowchart TD
 
 1. 새 지식 문서가 필요하면 만든다. 기존 핸드북 개정이면 새 파일을 만들지 않는다.
 2. Spec 0절의 `[신규]` 용어는 `GLS - Project Glossary.md`에 한 번만 추가한다.
-3. 마감 승인 뒤에만 `iems_finalize_spec`을 호출한다. 인자는 `ticket_id`, `commit_type`, `commit_scope`, `commit_summary`다.
+3. 마감 승인 뒤에만 `hub_finalize_spec`을 호출한다. 인자는 `ticket_id`, `commit_type`, `commit_scope`, `commit_summary`다.
 4. 사람이 워크스페이스 루트에서 `mcp-hub -close-ticket`을 실행한다. 커밋 메시지는 `{commit_type}({commit_scope}): [{ticket_id}] {commit_summary}`다. `TODO.md` 커밋 메시지는 `docs(todo): mark {ticket_id} as done`이다.
 
 ## 4. 예외
@@ -143,11 +143,11 @@ flowchart TD
 | :--- | :--- | :--- |
 | 승인 전에 코드가 수정됨 | Plan 단계 위반 | 해당 변경을 되돌리고 Plan부터 다시 한다. |
 | MCP 서버가 응답하지 않음 | `mcp-hub`가 PATH에 없거나 `.cursor/mcp.json`의 command가 `mcp-hub`가 아님 | `go install`로 `mcp-hub`를 PATH에 두고 mcp.json을 확인한다. |
-| `ERR_DIRTY_WORKTREE` | 블랙리스트 밖 추적 파일이 수정됨 | 그 파일을 커밋하거나 stash한 뒤 다시 호출한다. |
+| `ERR_DIRTY_WORKTREE` | 블랙리스트 밖 추적 파일이 수정됨 | 그 파일을 커밋하거나 치운 뒤 다시 호출한다. |
 | `ERR_INVALID_BRANCH` | `feature/{티켓ID}`가 아닌 브랜치에서 finalize | 브랜치를 맞춘 뒤에만 호출한다. |
 | `ERR_SPEC_NOT_ACTIVE` | 활성 Spec이 `03_Spec` 루트에 없음 | Spec을 루트에 둔 뒤 마감 승인 후에만 다시 호출한다. |
 | `ERR_SPEC_AMBIGUOUS` | 같은 티켓 Spec이 둘 이상 | 하나만 남긴다. |
-| `ERR_STASH_FAILED` | `stash pop` 실패 | `TODO.md`의 충돌 마커를 손으로 지운다. `reset --hard`는 쓰지 않는다. |
+| `ERR_STASH_FAILED` | `.git/mcp-todo.bak` 복원 충돌 | `TODO.md`의 충돌 마커를 손으로 지운다. `reset --hard`는 쓰지 않는다. |
 
 ## 5. 표기
 

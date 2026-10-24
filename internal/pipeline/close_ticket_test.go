@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -47,7 +48,7 @@ func TestGithubCompareURL(t *testing.T) {
 
 func TestMoveTodoDoneAppends(t *testing.T) {
 	in := "# board\n\n## In Progress\n- [ ] IEMS-460: work\n\n## Backlog\n- [ ] IEMS-402: x\n\n## Done\n> note\n- [x] IEMS-431: old\n"
-	out, err := moveTodoDone(in, "IEMS-460", defaultPattern())
+	out, err := moveTodoDone(in, "IEMS-460", iemsPattern(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +61,7 @@ func TestMoveTodoDoneAppends(t *testing.T) {
 	if !strings.Contains(out, "- [x] IEMS-431: old\n- [x] IEMS-460: work") {
 		t.Fatal(out)
 	}
-	again, err := moveTodoDone(out, "IEMS-460", defaultPattern())
+	again, err := moveTodoDone(out, "IEMS-460", iemsPattern(t))
 	if err != nil || again != out {
 		t.Fatal(err, again)
 	}
@@ -90,7 +91,7 @@ func TestCommitCandidatesIncludeToolSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"03_tools/mcp-hub/cmd/main.go", "README.md"}
+	want := []string{"03_tools/mcp-hub/bin/mcp-hub", "03_tools/mcp-hub/cmd/main.go", "README.md"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("%#v", got)
 	}
@@ -201,6 +202,101 @@ func TestCloseTicketSurgicalThenMain(t *testing.T) {
 	}
 	if strings.TrimSpace(gitOut(t, dir, "rev-parse", "--abbrev-ref", "HEAD")) != "main" {
 		t.Fatal("not on main")
+	}
+}
+
+func TestCloseTicketSquashMessageFallback(t *testing.T) {
+	ticket := "IEMS-460"
+	dir := closeFixture(t, ticket)
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("changed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	origin := strings.TrimSpace(gitOut(t, dir, "remote", "get-url", "origin"))
+	var featureSHA string
+	var out bytes.Buffer
+	err := New(dir).CloseTicket(context.Background(), CloseIO{
+		Out: &out,
+		Err: &out,
+		WaitMerge: func(string, string) error {
+			featureSHA = strings.TrimSpace(gitOut(t, dir, "rev-parse", "HEAD"))
+			clone := t.TempDir()
+			gitRun(t, clone, "clone", origin, ".")
+			gitRun(t, clone, "config", "user.email", "test@example.com")
+			gitRun(t, clone, "config", "user.name", "test")
+			if err := os.WriteFile(filepath.Join(clone, "SQUASH.md"), []byte("squashed\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			gitRun(t, clone, "add", "SQUASH.md")
+			gitRun(t, clone, "commit", "-m", "feat(Pipeline): ["+ticket+"] close")
+			gitRun(t, clone, "push", "origin", "main")
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err, out.String())
+	}
+	if strings.TrimSpace(gitOut(t, dir, "rev-parse", "--abbrev-ref", "HEAD")) != "main" {
+		t.Fatal("not on main")
+	}
+	anc := exec.Command("git", "merge-base", "--is-ancestor", featureSHA, "origin/main")
+	anc.Dir = dir
+	if err := anc.Run(); err == nil {
+		t.Fatal("feature commit is still an ancestor; squash fallback was not exercised")
+	}
+	body, err := os.ReadFile(filepath.Join(dir, "TODO.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "- [x] "+ticket) {
+		t.Fatal(string(body))
+	}
+	if strings.TrimSpace(gitOut(t, dir, "branch", "--list", "feature/"+ticket)) != "" {
+		t.Fatal("feature branch remains")
+	}
+}
+
+func TestCloseTicketRejectsUnmergedWithoutTicketMessage(t *testing.T) {
+	ticket := "IEMS-460"
+	dir := closeFixture(t, ticket)
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("changed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	origin := strings.TrimSpace(gitOut(t, dir, "remote", "get-url", "origin"))
+	var out bytes.Buffer
+	err := New(dir).CloseTicket(context.Background(), CloseIO{
+		Out: &out,
+		Err: &out,
+		WaitMerge: func(string, string) error {
+			clone := t.TempDir()
+			gitRun(t, clone, "clone", origin, ".")
+			gitRun(t, clone, "config", "user.email", "test@example.com")
+			gitRun(t, clone, "config", "user.name", "test")
+			if err := os.WriteFile(filepath.Join(clone, "NOTE.md"), []byte("note\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			gitRun(t, clone, "add", "NOTE.md")
+			gitRun(t, clone, "commit", "-m", "unrelated work")
+			gitRun(t, clone, "push", "origin", "main")
+			return nil
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "ERR_GIT") {
+		t.Fatal(err, out.String())
+	}
+}
+
+func TestBrowserCommand(t *testing.T) {
+	name, args := browserCommand("darwin", "https://example.com")
+	if name != "open" || len(args) != 1 || args[0] != "https://example.com" {
+		t.Fatalf("%s %#v", name, args)
+	}
+	name, args = browserCommand("windows", "https://example.com")
+	if name != "cmd" || strings.Join(args, " ") != "/c start https://example.com" {
+		t.Fatalf("%s %#v", name, args)
+	}
+	name, args = browserCommand("linux", "https://example.com")
+	if name != "xdg-open" || len(args) != 1 {
+		t.Fatalf("%s %#v", name, args)
 	}
 }
 

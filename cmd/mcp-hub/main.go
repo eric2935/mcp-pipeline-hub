@@ -9,9 +9,9 @@ import (
 	"io"
 	"os"
 
-	"iems/mcp-hub/internal/config"
-	"iems/mcp-hub/internal/pipeline"
-	"iems/mcp-hub/internal/protocol"
+	"mcp-pipeline-hub/internal/config"
+	"mcp-pipeline-hub/internal/pipeline"
+	"mcp-pipeline-hub/internal/protocol"
 )
 
 func main() {

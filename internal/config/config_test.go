@@ -7,23 +7,30 @@ import (
 	"testing"
 )
 
-func TestDefaultConfigMatchesIEMSTickets(t *testing.T) {
+func TestDefaultConfigIsNeutral(t *testing.T) {
 	cfg := DefaultConfig()
-	if cfg.ToolName != "iems-mcp-hub" || cfg.GetSpecActiveDir() != "obsidian-docs/v2/03_Spec (구현명세서)" {
-		t.Fatalf("%s %s", cfg.ToolName, cfg.GetSpecActiveDir())
+	want, err := InitTemplate("PROJ", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ToolName != "agentic-mcp-hub" || cfg.TicketPrefix != "PROJ" || cfg.TicketPattern != want.TicketPattern {
+		t.Fatalf("%+v", cfg)
+	}
+	if cfg.GetSpecActiveDir() != "obsidian-docs/v2/03_Spec (구현명세서)" {
+		t.Fatal(cfg.GetSpecActiveDir())
 	}
 	if cfg.GetSpecArchiveDir() != "obsidian-docs/v2/03_Spec (구현명세서)/_archive" {
 		t.Fatal(cfg.GetSpecArchiveDir())
 	}
-	for _, id := range []string{"IEMS-451", "IEMS-401-2", "IEMS-203-10"} {
-		if !cfg.MatchTicket(id) {
-			t.Fatalf("expected match %s", id)
-		}
+	if len(cfg.SSOTManifests) != 0 {
+		t.Fatalf("ssot %#v", cfg.SSOTManifests)
 	}
-	for _, id := range []string{"IEMS-451-go", "SHOP-1", "iems-451"} {
-		if cfg.MatchTicket(id) {
-			t.Fatalf("expected reject %s", id)
-		}
+	if !cfg.MatchTicket("PROJ-1") || !cfg.MatchTicket("PROJ-401-2") || cfg.MatchTicket("IEMS-451") {
+		t.Fatal("ticket match")
+	}
+	joined := strings.Join(append(append([]string{}, cfg.DirtyBlacklist...), cfg.CloseExcludePaths...), "\n")
+	if strings.Contains(joined, "03_tools") || strings.Contains(joined, "02_labs") || !strings.Contains(joined, "obsidian-docs/v2/") {
+		t.Fatal(joined)
 	}
 }
 
@@ -104,34 +111,26 @@ func TestLoadConfigUsesVault(t *testing.T) {
 	}
 }
 
-func TestWorkspaceSampleMatchesDefault(t *testing.T) {
-	wd, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	root := filepath.Clean(filepath.Join(wd, "..", "..", "..", ".."))
-	if _, err := os.Stat(filepath.Join(root, FileName)); err != nil {
-		t.Fatal(err)
-	}
-	cfg, err := LoadConfig(root, "")
-	if err != nil {
-		t.Fatal(err)
-	}
+func TestDefaultConfigMatchesInitTemplate(t *testing.T) {
 	def := DefaultConfig()
-	if cfg.ToolName != def.ToolName || cfg.TicketPrefix != def.TicketPrefix || cfg.TicketPattern != def.TicketPattern {
-		t.Fatalf("sample %#v", cfg)
+	want, err := InitTemplate("PROJ", "obsidian-docs/v2")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if cfg.GetSpecActiveDir() != def.GetSpecActiveDir() || cfg.GetSpecArchiveDir() != def.GetSpecArchiveDir() || cfg.TodoFile != def.TodoFile {
-		t.Fatalf("paths %s %s", cfg.GetSpecActiveDir(), cfg.TodoFile)
+	if def.ToolName != want.ToolName || def.TicketPrefix != want.TicketPrefix || def.TicketPattern != want.TicketPattern {
+		t.Fatalf("%#v", def)
 	}
-	if strings.Join(cfg.SSOTManifests, "\n") != strings.Join(def.SSOTManifests, "\n") {
-		t.Fatalf("ssot %#v", cfg.SSOTManifests)
+	if def.GetSpecActiveDir() != want.GetSpecActiveDir() || def.TodoFile != want.TodoFile {
+		t.Fatalf("%s %s", def.GetSpecActiveDir(), def.TodoFile)
 	}
-	if strings.Join(cfg.DirtyBlacklist, "\n") != strings.Join(def.DirtyBlacklist, "\n") {
-		t.Fatalf("dirty %#v", cfg.DirtyBlacklist)
+	if strings.Join(def.SSOTManifests, "\n") != strings.Join(want.SSOTManifests, "\n") {
+		t.Fatalf("ssot %#v", def.SSOTManifests)
 	}
-	if strings.Join(cfg.CloseExcludePaths, "\n") != strings.Join(def.CloseExcludePaths, "\n") {
-		t.Fatalf("close %#v", cfg.CloseExcludePaths)
+	if strings.Join(def.DirtyBlacklist, "\n") != strings.Join(want.DirtyBlacklist, "\n") {
+		t.Fatalf("dirty %#v", def.DirtyBlacklist)
+	}
+	if strings.Join(def.CloseExcludePaths, "\n") != strings.Join(want.CloseExcludePaths, "\n") {
+		t.Fatalf("close %#v", def.CloseExcludePaths)
 	}
 }
 
@@ -157,9 +156,12 @@ func TestInitTemplateUsesPrefix(t *testing.T) {
 		t.Fatalf("ssot %#v", cfg.SSOTManifests)
 	}
 	for _, path := range append(append([]string{}, cfg.DirtyBlacklist...), cfg.CloseExcludePaths...) {
-		if strings.Contains(path, "02_labs") || strings.Contains(path, "03_tools") {
+		if strings.Contains(path, "02_labs") || strings.Contains(path, "03_tools") || strings.Contains(path, "obsidian-docs") {
 			t.Fatalf("domain path %s", path)
 		}
+	}
+	if !containsString(cfg.DirtyBlacklist, "test-docs/") || !containsString(cfg.CloseExcludePaths, "test-docs/") {
+		t.Fatalf("blacklist %#v close %#v", cfg.DirtyBlacklist, cfg.CloseExcludePaths)
 	}
 	for _, prefix := range []string{"shop", "my-app", "APP", "CORE"} {
 		got, err := InitTemplate(prefix, "docs")
@@ -175,4 +177,13 @@ func TestInitTemplateUsesPrefix(t *testing.T) {
 			t.Fatalf("prefix %q must fail", prefix)
 		}
 	}
+}
+
+func containsString(list []string, want string) bool {
+	for _, item := range list {
+		if item == want {
+			return true
+		}
+	}
+	return false
 }

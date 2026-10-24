@@ -85,8 +85,13 @@ func TestRenderPreservesPrefixCase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(files[".mcp-pipeline.json"]), `"ticket_prefix": "iCMS"`) {
-		t.Fatal(string(files[".mcp-pipeline.json"]))
+	cfg := string(files[".mcp-pipeline.json"])
+	if !strings.Contains(cfg, `"ticket_prefix": "iCMS"`) || !strings.Contains(cfg, `"docs/"`) || strings.Contains(cfg, "obsidian-docs") {
+		t.Fatal(cfg)
+	}
+	manual := string(files["docs/01_SOP (표준운영절차)/표준-업무-매뉴얼.md"])
+	if !strings.Contains(manual, "hub_prepare_branch") || strings.Contains(manual, "obsidian-docs") || strings.Contains(manual, "iems_prepare_branch") {
+		t.Fatal(manual)
 	}
 }
 

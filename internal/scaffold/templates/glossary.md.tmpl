@@ -191,7 +191,7 @@ summary: "{{.ProjectName}} 용어 의미 SSOT. 공학 직관화 13항과 파이�
 ### 수술적 Staging (Surgical Staging)
 
 - **정의:** `git add .` 없이 이번 변경의 추적 파일만 스테이징하는 규칙이다.
-- **사용 맥락:** `obsidian-docs/`, `TODO.md`, `.cursor/`, `repomix-output.xml`은 기능 브랜치 커밋에서 뺀다.
+- **사용 맥락:** `{{.VaultDir}}/`, `TODO.md`, `.cursor/`, `repomix-output.xml`은 기능 브랜치 커밋에서 뺀다.
 
 ^gls-surgical-staging
 
@@ -209,11 +209,11 @@ summary: "{{.ProjectName}} 용어 의미 SSOT. 공학 직관화 13항과 파이�
 | Phase 3 | 기능 브랜치에서 구현과 로컬 검증. Git 침묵. |
 | Phase 4 | 사람 실측. 실패하면 Phase 3으로 돌아간다. |
 | Phase 5 | 마감 승인 뒤 finalize와 사람 Git 정리. |
-| `iems_pack_context` | `npx repomix --no-gitignore`. `ssot_manifests` 문자열 검사. |
-| `iems_ingest_spec` | Spec 파일 생성. 티켓이 없을 때만 TODO 한 줄. |
-| `iems_prepare_branch` | `feature/{{.TicketPrefix}}-XXX` 생성 또는 전환. |
-| `iems_inspect_pipeline` | 브랜치, 활성 Spec, stageable. 빌드가 아니다. |
-| `iems_finalize_spec` | `status: completed` 후 `_archive/` 이동. 명령 텍스트만 반환. |
+| `hub_pack_context` | `npx repomix --no-gitignore`. `ssot_manifests` 문자열 검사. |
+| `hub_ingest_spec` | Spec 파일 생성. 티켓이 없을 때만 TODO 한 줄. |
+| `hub_prepare_branch` | `feature/{{.TicketPrefix}}-XXX` 생성 또는 전환. |
+| `hub_inspect_pipeline` | 브랜치, 활성 Spec, stageable. 빌드가 아니다. |
+| `hub_finalize_spec` | `status: completed` 후 `_archive/` 이동. 명령 텍스트만 반환. |
 | Blacklist | dirty 검사를 통과하는 경로 집합. |
 | `allow_dirty` | true일 때만 블랙리스트 밖 dirty로 prepare를 막지 않는다. 기본 false. |
 | `sync_main` | true면 fetch. 브랜치가 없을 때만 main을 fast-forward. 기본 true. |
@@ -221,7 +221,7 @@ summary: "{{.ProjectName}} 용어 의미 SSOT. 공학 직관화 13항과 파이�
 | `ERR_INVALID_BRANCH` | finalize 시점 HEAD가 그 티켓의 feature 브랜치가 아님. |
 | `ERR_SPEC_NOT_ACTIVE` | finalize가 루트에서 티켓 Spec을 찾지 못함. |
 | `ERR_SPEC_AMBIGUOUS` | 같은 티켓의 활성 Spec이 둘 이상. |
-| `ERR_STASH_FAILED` | `stash pop` 실패. |
+| `ERR_STASH_FAILED` | `.git/mcp-todo.bak` 복원 충돌. `TODO.md` 충돌 마커를 손으로 지운다. |
 | Git Silence | Phase 3과 4에서 변경 git 명령 텍스트를 내지 않음. |
 | `FAST_PATH` | stageable 0건. 기능 브랜치 커밋 없음. |
 | `SURGICAL_PR` | stageable 1건 이상. |

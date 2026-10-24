@@ -6,15 +6,17 @@ import (
 	"path/filepath"
 	"strings"
 
-	"iems/mcp-hub/internal/config"
-	"iems/mcp-hub/internal/scaffold"
+	"mcp-pipeline-hub/internal/config"
+	"mcp-pipeline-hub/internal/scaffold"
 )
 
-var gitignoreEnsure = []string{
-	"obsidian-docs/",
-	"repomix-output.xml",
-	"bin/",
-	".cursor/",
+func gitignoreEnsureLines(vault string) []string {
+	return []string{
+		config.VaultPathToken(vault),
+		"repomix-output.xml",
+		"bin/",
+		".cursor/",
+	}
 }
 
 // InitOptions controls -init.
@@ -74,7 +76,7 @@ func RunInitProject(dir string, opt InitOptions) (InitReport, error) {
 	if err != nil {
 		return report, err
 	}
-	if err := ensureGitignore(absDir, &report); err != nil {
+	if err := ensureGitignore(absDir, opt.Vault, &report); err != nil {
 		return report, err
 	}
 	cfg, err := config.InitTemplate(prefix, opt.Vault)
@@ -99,7 +101,8 @@ func RunInitProject(dir string, opt InitOptions) (InitReport, error) {
 	return report, nil
 }
 
-func ensureGitignore(root string, report *InitReport) error {
+func ensureGitignore(root, vault string, report *InitReport) error {
+	gitignoreEnsure := gitignoreEnsureLines(vault)
 	rel := ".gitignore"
 	full := filepath.Join(root, rel)
 	body, err := os.ReadFile(full)

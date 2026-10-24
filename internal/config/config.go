@@ -49,39 +49,24 @@ type PipelineConfig struct {
 	todoTicket      *regexp.Regexp
 }
 
-// DefaultConfig is the iEMS fallback used when .mcp-pipeline.json is absent.
+// DefaultConfig is the neutral fallback used when .mcp-pipeline.json is absent.
+// It matches InitTemplate("PROJ", "").
 func DefaultConfig() *PipelineConfig {
-	c := &PipelineConfig{
-		ToolName:       "iems-mcp-hub",
-		TicketPrefix:   "IEMS",
-		TicketPattern:  `^IEMS-[0-9]+(?:-[0-9]+)?$`,
-		VaultDir:       "obsidian-docs/v2",
-		SpecDir:        "03_Spec (구현명세서)",
-		SpecArchiveDir: "_archive",
-		TodoFile:       "TODO.md",
-		SSOTManifests: []string{
-			"02_labs/go-lab/go.mod",
-			"02_labs/ng-lab/iems-ui/package.json",
-		},
-		DirtyBlacklist: []string{
-			"TODO.md",
-			"repomix-output.xml",
-			"obsidian-docs/",
-			"03_tools/",
-			".cursor/",
-		},
-		CloseExcludePaths: []string{
-			"obsidian-docs/",
-			"TODO.md",
-			".cursor/",
-			"repomix-output.xml",
-			"03_tools/mcp-hub/bin/",
-		},
-	}
-	if err := c.Validate(); err != nil {
+	c, err := InitTemplate("PROJ", "")
+	if err != nil {
 		panic(err)
 	}
 	return c
+}
+
+// VaultPathToken is the blacklist and gitignore entry for a vault directory.
+// An empty vault uses the default obsidian-docs/v2. The result always ends with /.
+func VaultPathToken(vault string) string {
+	v := strings.Trim(filepath.ToSlash(strings.TrimSpace(vault)), "/")
+	if v == "" {
+		v = "obsidian-docs/v2"
+	}
+	return v + "/"
 }
 
 // InitTemplate is the bleached document -init writes for a new project.
@@ -90,9 +75,11 @@ func InitTemplate(prefix, vault string) (*PipelineConfig, error) {
 	if !prefixPattern.MatchString(prefix) {
 		return nil, &Error{Code: ErrInvalid, Detail: "ticket_prefix"}
 	}
+	vault = strings.Trim(filepath.ToSlash(strings.TrimSpace(vault)), "/")
 	if vault == "" {
 		vault = "obsidian-docs/v2"
 	}
+	token := vault + "/"
 	base := &PipelineConfig{
 		ToolName:       initToolName,
 		TicketPrefix:   prefix,
@@ -105,11 +92,11 @@ func InitTemplate(prefix, vault string) (*PipelineConfig, error) {
 		DirtyBlacklist: []string{
 			"TODO.md",
 			"repomix-output.xml",
-			"obsidian-docs/",
+			token,
 			".cursor/",
 		},
 		CloseExcludePaths: []string{
-			"obsidian-docs/",
+			token,
 			"TODO.md",
 			".cursor/",
 			"repomix-output.xml",

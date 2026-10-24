@@ -2,14 +2,16 @@ package pipeline
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
-	"iems/mcp-hub/internal/config"
+	"mcp-pipeline-hub/internal/config"
 )
 
 func TestStripSixBacktickFence(t *testing.T) {
@@ -86,6 +88,7 @@ func TestIngestRejectsPathEscape(t *testing.T) {
 
 func TestIngestOverwriteAndTodo(t *testing.T) {
 	dir := t.TempDir()
+	writePipelineConfig(t, dir, "IEMS", "obsidian-docs/v2")
 	if err := os.WriteFile(filepath.Join(dir, "TODO.md"), []byte("## In Progress\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -189,6 +192,39 @@ func TestPrepareBranchSyncMainRestoresTodo(t *testing.T) {
 	body, _ := os.ReadFile(filepath.Join(dir, "TODO.md"))
 	if string(body) != todo {
 		t.Fatalf("todo not restored: %s", body)
+	}
+}
+
+func TestPrepareBranchIgnoresForeignStash(t *testing.T) {
+	origin := t.TempDir()
+	gitRun(t, origin, "init", "-b", "main", "--bare")
+	dir := initRepo(t)
+	gitRun(t, dir, "remote", "add", "origin", origin)
+	gitRun(t, dir, "push", "-u", "origin", "main")
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("stashed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, dir, "stash", "push", "-m", "foreign-stash", "--", "README.md")
+	before := gitOut(t, dir, "stash", "list")
+	todo := "## In Progress\n- [ ] IEMS-451: keep\n"
+	if err := os.WriteFile(filepath.Join(dir, "TODO.md"), []byte(todo), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h := New(dir)
+	out, err := h.PrepareBranch(context.Background(), prepareIn{TicketID: "IEMS-452"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.BranchName != "feature/IEMS-452" {
+		t.Fatal(out.BranchName)
+	}
+	body, _ := os.ReadFile(filepath.Join(dir, "TODO.md"))
+	if string(body) != todo {
+		t.Fatalf("todo not restored: %s", body)
+	}
+	after := gitOut(t, dir, "stash", "list")
+	if after != before || !strings.Contains(after, "foreign-stash") {
+		t.Fatalf("stash changed\nbefore %s\nafter %s", before, after)
 	}
 }
 
@@ -329,12 +365,12 @@ func TestFinalizeAmbiguousAndSurgical(t *testing.T) {
 func TestPackContextSSOT(t *testing.T) {
 	dir := t.TempDir()
 	h := New(dir)
+	h.Config.SSOTManifests = []string{"go.mod", "package.json"}
 	h.Run = scriptRunner{fn: func(ctx context.Context, dir, name string, args []string) (string, string, error) {
 		if name != "npx" {
 			t.Fatalf("cmd %s", name)
 		}
-		ssot := config.DefaultConfig().SSOTManifests
-		body := "<file path=\"" + ssot[0] + "\"></file><file path=\"" + ssot[1] + "\"></file>"
+		body := "<file path=\"go.mod\"></file><file path=\"package.json\"></file>"
 		return "", "", os.WriteFile(filepath.Join(dir, repomixOutput), []byte(body), 0o644)
 	}}
 	out, err := h.PackContext(context.Background())
@@ -354,6 +390,14 @@ func TestPackContextSSOT(t *testing.T) {
 	_, err = h.PackContext(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "ERR_TIMEOUT") {
 		t.Fatal(err)
+	}
+	empty := New(t.TempDir())
+	empty.Run = scriptRunner{fn: func(ctx context.Context, dir, name string, args []string) (string, string, error) {
+		return "", "", os.WriteFile(filepath.Join(dir, repomixOutput), []byte("missing"), 0o644)
+	}}
+	out, err = empty.PackContext(context.Background())
+	if err != nil || !out.SSOTVerified {
+		t.Fatal(err, out)
 	}
 }
 
@@ -408,11 +452,35 @@ func TestDefinitionsIncludeGateText(t *testing.T) {
 	for _, d := range defs {
 		by[d.Name] = d.Description
 	}
-	if !strings.Contains(by["iems_prepare_branch"], "MUST ONLY be called when preparing Phase 2 branch isolation.") {
-		t.Fatal(by["iems_prepare_branch"])
+	if !strings.Contains(by["hub_prepare_branch"], "MUST ONLY be called when preparing Phase 2 branch isolation.") {
+		t.Fatal(by["hub_prepare_branch"])
 	}
-	if !strings.Contains(by["iems_finalize_spec"], "마감 승인") {
-		t.Fatal(by["iems_finalize_spec"])
+	if !strings.Contains(by["hub_finalize_spec"], "마감 승인") {
+		t.Fatal(by["hub_finalize_spec"])
+	}
+	if _, ok := by["iems_prepare_branch"]; ok {
+		t.Fatal("legacy name must not be advertised")
+	}
+}
+
+func TestInvokeAcceptsHubAndLegacyNames(t *testing.T) {
+	dir := initRepo(t)
+	h := New(dir)
+	for _, name := range []string{"hub_inspect_pipeline", "iems_inspect_pipeline"} {
+		raw, err := h.Invoke(name, []byte(`{}`))
+		if err != nil {
+			t.Fatal(name, err)
+		}
+		out, ok := raw.(inspectOut)
+		if !ok || out.CurrentBranch != "main" {
+			t.Fatalf("%s %#v", name, raw)
+		}
+	}
+	if _, err := h.Invoke("hub_prepare_branch", []byte(`{"ticket_id":"IEMS-451","sync_main":false}`)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.Invoke("iems_prepare_branch", []byte(`{"ticket_id":"IEMS-452","sync_main":false}`)); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -436,9 +504,35 @@ func initRepo(t *testing.T) string {
 	if err := os.WriteFile(filepath.Join(dir, "TODO.md"), []byte("## In Progress\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	gitRun(t, dir, "add", "README.md", "TODO.md")
+	writePipelineConfig(t, dir, "IEMS", "obsidian-docs/v2")
+	gitRun(t, dir, "add", "README.md", "TODO.md", ".mcp-pipeline.json")
 	gitRun(t, dir, "commit", "-m", "init")
 	return dir
+}
+
+func writePipelineConfig(t *testing.T, dir, prefix, vault string) {
+	t.Helper()
+	cfg, err := config.InitTemplate(prefix, vault)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body = append(body, '\n')
+	if err := os.WriteFile(filepath.Join(dir, ".mcp-pipeline.json"), body, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func iemsPattern(t *testing.T) *regexp.Regexp {
+	t.Helper()
+	cfg, err := config.InitTemplate("IEMS", "obsidian-docs/v2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cfg.Pattern()
 }
 
 func writeSpec(t *testing.T, dir, name string) {

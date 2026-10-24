@@ -10,11 +10,11 @@
   "dirty_blacklist": [
     "TODO.md",
     "repomix-output.xml",
-    "obsidian-docs/",
+    {{jsonQuote (vaultToken .VaultDir)}},
     ".cursor/"
   ],
   "close_exclude_paths": [
-    "obsidian-docs/",
+    {{jsonQuote (vaultToken .VaultDir)}},
     "TODO.md",
     ".cursor/",
     "repomix-output.xml"

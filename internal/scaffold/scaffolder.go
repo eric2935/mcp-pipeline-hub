@@ -12,7 +12,7 @@ import (
 	"text/template"
 	"time"
 
-	"iems/mcp-hub/internal/config"
+	"mcp-pipeline-hub/internal/config"
 )
 
 const (
@@ -62,7 +62,8 @@ func Render(ctx Context) (map[string][]byte, error) {
 	ctx.VaultDir = want.VaultDir
 
 	tmpl, err := template.New("scaffold").Funcs(template.FuncMap{
-		"jsonQuote": jsonQuote,
+		"jsonQuote":  jsonQuote,
+		"vaultToken": config.VaultPathToken,
 	}).Option("missingkey=error").ParseFS(Templates, "templates/*")
 	if err != nil {
 		return nil, err

@@ -11,11 +11,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
 
-	"iems/mcp-hub/internal/guard"
+	"mcp-pipeline-hub/internal/guard"
 )
 
 const closeTicketCommand = "mcp-hub -close-ticket"
@@ -110,13 +111,21 @@ func (h *Hub) CloseTicket(ctx context.Context, cio CloseIO) error {
 		if err != nil {
 			return err
 		}
+		squash := false
 		if !ok {
-			return &ToolError{Code: "ERR_GIT", Detail: "origin/main does not contain " + branch}
+			mentioned, err := h.mainCommitMentionsTicket(ctx, ticket)
+			if err != nil {
+				return err
+			}
+			if !mentioned {
+				return &ToolError{Code: "ERR_GIT", Detail: "origin/main does not contain " + branch}
+			}
+			squash = true
 		}
-	} else {
-		fmt.Fprintln(cio.Out, "FAST_PATH")
+		return h.finishOnMain(ctx, cio, ticket, branch, squash)
 	}
-	return h.finishOnMain(ctx, cio, ticket, branch)
+	fmt.Fprintln(cio.Out, "FAST_PATH")
+	return h.finishOnMain(ctx, cio, ticket, branch, false)
 }
 
 func waitMerge(cio CloseIO, branch, info string) error {
@@ -141,7 +150,19 @@ func waitMerge(cio CloseIO, branch, info string) error {
 }
 
 func openBrowser(raw string) error {
-	return exec.Command("open", raw).Start()
+	name, args := browserCommand(runtime.GOOS, raw)
+	return exec.Command(name, args...).Start()
+}
+
+func browserCommand(goos, raw string) (string, []string) {
+	switch goos {
+	case "darwin":
+		return "open", []string{raw}
+	case "windows":
+		return "cmd", []string{"/c", "start", raw}
+	default:
+		return "xdg-open", []string{raw}
+	}
 }
 
 func firstHTTPURL(info string) string {
@@ -216,27 +237,34 @@ func (h *Hub) isAncestor(ctx context.Context, commit, of string) (bool, error) {
 	return false, execErr(err, stderr)
 }
 
-func (h *Hub) finishOnMain(ctx context.Context, cio CloseIO, ticket, feature string) error {
+// mainCommitMentionsTicket is the squash-merge fallback.
+// isAncestor stays false after a squash because the feature commit is not in origin/main.
+// A literal "[ticket]" in one of the last 10 origin/main messages counts as merged.
+// --fixed-strings is required: the brackets are regex metacharacters without it.
+func (h *Hub) mainCommitMentionsTicket(ctx context.Context, ticket string) (bool, error) {
+	needle := "[" + ticket + "]"
+	out, err := h.gitSyncOut(ctx, "log", "origin/main", "-n", "10", "--fixed-strings", "--grep="+needle)
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(out) != "", nil
+}
+
+func (h *Hub) finishOnMain(ctx context.Context, cio CloseIO, ticket, feature string, squash bool) error {
 	dirty, err := h.trackedDirty(ctx)
 	if err != nil {
 		return err
 	}
-	stashed := false
+	var hold *todoHold
 	if containsPath(dirty, h.todoRel()) {
-		if err := h.gitLocal(ctx, "stash", "push", "-m", "iems-close-ticket", "--", h.todoRel()); err != nil {
+		got, err := h.holdTodo(ctx)
+		if err != nil {
 			return err
 		}
-		stashed = true
+		hold = got
 	}
 	pop := func() error {
-		if !stashed {
-			return nil
-		}
-		stashed = false
-		if err := h.gitLocal(ctx, "stash", "pop"); err != nil {
-			return &ToolError{Code: "ERR_STASH_FAILED", Detail: err.Error()}
-		}
-		return nil
+		return h.releaseTodo(ctx, hold)
 	}
 	if err := h.gitLocal(ctx, "checkout", "main"); err != nil {
 		_ = pop()
@@ -281,7 +309,11 @@ func (h *Hub) finishOnMain(ctx context.Context, cio CloseIO, ticket, feature str
 	if err := h.gitSync(ctx, "fetch", "--prune", "origin"); err != nil {
 		return err
 	}
-	if err := h.gitLocal(ctx, "branch", "-d", feature); err != nil {
+	deleteFlag := "-d"
+	if squash {
+		deleteFlag = "-D"
+	}
+	if err := h.gitLocal(ctx, "branch", deleteFlag, feature); err != nil {
 		return err
 	}
 	fmt.Fprintln(cio.Out, "closed "+ticket)
