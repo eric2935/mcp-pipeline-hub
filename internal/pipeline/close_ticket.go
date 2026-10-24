@@ -237,13 +237,15 @@ func (h *Hub) isAncestor(ctx context.Context, commit, of string) (bool, error) {
 	return false, execErr(err, stderr)
 }
 
+const squashSearchDepth = 50
+
 // mainCommitMentionsTicket is the squash-merge fallback.
 // isAncestor stays false after a squash because the feature commit is not in origin/main.
-// A literal "[ticket]" in one of the last 10 origin/main messages counts as merged.
+// A literal "[ticket]" in one of the last squashSearchDepth origin/main messages counts as merged.
 // --fixed-strings is required: the brackets are regex metacharacters without it.
 func (h *Hub) mainCommitMentionsTicket(ctx context.Context, ticket string) (bool, error) {
 	needle := "[" + ticket + "]"
-	out, err := h.gitSyncOut(ctx, "log", "origin/main", "-n", "10", "--fixed-strings", "--grep="+needle)
+	out, err := h.gitSyncOut(ctx, "log", "origin/main", "-n", strconv.Itoa(squashSearchDepth), "--fixed-strings", "--grep="+needle)
 	if err != nil {
 		return false, err
 	}

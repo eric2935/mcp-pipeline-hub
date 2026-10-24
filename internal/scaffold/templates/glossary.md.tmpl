@@ -239,7 +239,7 @@ summary: "{{.ProjectName}} 용어 의미 SSOT. 공학 직관화 13항과 파이�
 | `ERR_TOKEN_NOT_FOUND` | `.git/mcp-finalize-tokens/{ticket}.json`이 없음. |
 | `ERR_TOKEN_EXPIRED` | 발급 후 300초가 지남. 파일을 삭제한다. |
 | `ERR_TOKEN_INVALID` | 해시가 다르거나 JSON이 손상됨. 파일은 남긴다. |
-| `ERR_STASH_FAILED` | `.git/mcp-todo.bak` 복원 충돌. `TODO.md` 충돌 마커를 손으로 지운다. |
+| `ERR_STASH_FAILED` | `.git/mcp-todo.bak` 복원 충돌. Phase 2는 feature 브랜치에서 충돌 마커만 지우고 구현을 계속한다. Phase 5는 `main`에서 마커를 지우고 티켓을 `## Done`으로 옮긴 뒤 사람이 커밋, 푸시, `git branch -D`를 한다. `git reset --hard`는 쓰지 않는다. 절차의 정본은 `표준-업무-매뉴얼.md` 4.1절이다. |
 | Git Silence | Phase 3과 4에서 변경 git 명령 텍스트를 내지 않음. |
 | `FAST_PATH` | stageable 0건. 기능 브랜치 커밋 없음. |
 | `SURGICAL_PR` | stageable 1건 이상. |

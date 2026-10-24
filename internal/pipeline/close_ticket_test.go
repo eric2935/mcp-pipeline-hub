@@ -300,6 +300,31 @@ func TestBrowserCommand(t *testing.T) {
 	}
 }
 
+func TestMainCommitMentionsTicketSearchDepth(t *testing.T) {
+	var gotName string
+	var gotArgs []string
+	h := New(t.TempDir())
+	h.Run = scriptRunner{fn: func(ctx context.Context, dir, name string, args []string) (string, string, error) {
+		gotName = name
+		gotArgs = append([]string(nil), args...)
+		return "feat(GitEngine): [HUB-006] squash\n", "", nil
+	}}
+	ok, err := h.mainCommitMentionsTicket(context.Background(), "HUB-006")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("empty log")
+	}
+	if gotName != "git" {
+		t.Fatal(gotName)
+	}
+	want := []string{"log", "origin/main", "-n", "50", "--fixed-strings", "--grep=[HUB-006]"}
+	if strings.Join(gotArgs, " ") != strings.Join(want, " ") {
+		t.Fatalf("%q", gotArgs)
+	}
+}
+
 func closeFixture(t *testing.T, ticket string) string {
 	t.Helper()
 	origin := t.TempDir()

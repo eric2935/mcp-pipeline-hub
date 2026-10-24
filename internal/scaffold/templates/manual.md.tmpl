@@ -191,7 +191,38 @@ mcp-hub -close-ticket
 | `ERR_TOKEN_NOT_FOUND` | 토큰 파일이 없음 | 다시 발급한다. 한 번 성공한 토큰은 재사용할 수 없다. |
 | `ERR_TOKEN_EXPIRED` | 발급 후 300초가 지남 | 파일을 지운 상태다. 다시 발급한다. |
 | `ERR_TOKEN_INVALID` | 해시가 다르거나 JSON이 손상됨 | 저장 파일은 남는다. 올바른 토큰을 넣거나 다시 발급한다. |
-| `ERR_STASH_FAILED` | `.git/mcp-todo.bak` 복원 충돌 | `TODO.md`의 충돌 마커를 손으로 지운다. `reset --hard`는 쓰지 않는다. |
+| `ERR_STASH_FAILED` | `.git/mcp-todo.bak` 복원 충돌 | `TODO.md` 충돌 마커를 4.1에 따라 정리한다. `git reset --hard`는 쓰지 않는다. |
+
+### 4.1 ERR_STASH_FAILED 충돌 복구 가이드
+
+`git merge-file`이 `TODO.md`에 충돌 마커를 남기면 `ERR_STASH_FAILED`가 반환된다. `.git/mcp-todo.bak`와 `.git/mcp-todo.bak.base`는 복원 시도 직후 삭제된다.
+
+| 원칙 | 적용 |
+| :--- | :--- |
+| Zero Reset | `git reset --hard`는 쓰지 않는다. 작업 트리의 `TODO.md`와 충돌 마커를 통째로 지우면 보관했던 내용이 사라진다. |
+| Phase 2 | HEAD는 feature 브랜치다. `hub_prepare_branch`가 전환 뒤 복원에 실패한 상태다. 기본 `sync_main`이 true이고 `TODO.md`가 바뀌어 있을 때 이 경로를 탄다. 충돌 마커를 제거한 뒤 구현을 계속한다. |
+| Phase 5 | HEAD는 `main`이다. `-close-ticket`이 원격 머지를 확인한 뒤 `main`으로 전환하고 복원에 실패한 상태다. 티켓의 `## Done` 이동, 커밋, 푸시, 브랜치 삭제는 아직 실행되지 않았다. |
+
+Phase 2:
+
+1. `TODO.md`에서 `<<<<<<<`, `=======`, `>>>>>>>`를 지우고 남길 줄을 하나로 합친다.
+2. 마커를 지운 뒤 구현을 계속한다.
+3. `TODO.md`는 기능 브랜치 커밋에 넣지 않는다.
+
+Phase 5:
+
+원격 머지는 이미 확인되었다. Squash Merge는 feature 커밋을 `origin/main`의 조상으로 만들지 않는다. 브랜치 삭제는 `git branch -D`다.
+
+1. `TODO.md`에서 충돌 마커를 지운다.
+2. 해당 티켓 줄을 `## In Progress`에서 `## Done`으로 옮기고 `- [ ]`를 `- [x]`로 바꾼다.
+3. 워크스페이스 루트에서 아래를 실행한다.
+
+```bash
+git add -- TODO.md
+git commit -m "docs(todo): mark {티켓ID} as done"
+git push origin main
+git branch -D feature/{티켓ID}
+```
 
 ## 5. 표기
 
