@@ -83,7 +83,7 @@ func FinalizeBranchOK(branch, ticketID string, pattern *regexp.Regexp) (bool, er
 	return re.MatchString(branch), nil
 }
 
-// IsBlacklisted reports paths that must not block iems_prepare_branch.
+// IsBlacklisted reports paths that must not block hub_prepare_branch.
 // Directory patterns end with / or contain a slash and match that prefix.
 // A bare file name matches that base name. Close-ticket staging uses IsCommitExcluded.
 func IsBlacklisted(rel string, patterns []string) bool {

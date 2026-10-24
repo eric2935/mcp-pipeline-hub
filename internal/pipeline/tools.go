@@ -13,13 +13,13 @@ import (
 	"strings"
 	"time"
 
-	"iems/mcp-hub/internal/config"
-	"iems/mcp-hub/internal/guard"
-	"iems/mcp-hub/internal/protocol"
+	"mcp-pipeline-hub/internal/config"
+	"mcp-pipeline-hub/internal/guard"
+	"mcp-pipeline-hub/internal/protocol"
 )
 
 const (
-	localGitTimeout = 5 * time.Second
+	localGitTimeout = 15 * time.Second
 	syncTimeout     = 30 * time.Second
 	repomixTimeout  = 30 * time.Second
 
@@ -78,7 +78,7 @@ func Open(root, configPath string) (*Hub, error) {
 	return newHub(root, cfg), nil
 }
 
-// New loads config from root and falls back to the iEMS defaults when the file is unusable.
+// New loads config from root and falls back to the neutral defaults when the file is unusable.
 func New(root string) *Hub {
 	cfg, err := config.LoadConfig(root, "")
 	if err != nil {
@@ -122,12 +122,12 @@ func defaultPattern() *regexp.Regexp {
 func (h *Hub) Definitions() []protocol.ToolDef {
 	return []protocol.ToolDef{
 		{
-			Name:        "iems_pack_context",
+			Name:        "hub_pack_context",
 			Description: "Pack the Code M context with npx repomix --no-gitignore and verify the SSOT manifests.",
 			InputSchema: objectSchema(nil, nil),
 		},
 		{
-			Name:        "iems_ingest_spec",
+			Name:        "hub_ingest_spec",
 			Description: "Write a Spec under 03_Spec and optionally insert one idempotent TODO.md line. If ticket_id, scope, title, and spec_markdown are all empty, read the OS clipboard.",
 			InputSchema: objectSchema(nil, map[string]any{
 				"ticket_id":     map[string]any{"type": "string"},
@@ -138,7 +138,7 @@ func (h *Hub) Definitions() []protocol.ToolDef {
 			}),
 		},
 		{
-			Name:        "iems_prepare_branch",
+			Name:        "hub_prepare_branch",
 			Description: "MUST ONLY be called when preparing Phase 2 branch isolation.",
 			InputSchema: objectSchema([]string{"ticket_id"}, map[string]any{
 				"ticket_id":   map[string]any{"type": "string"},
@@ -148,12 +148,12 @@ func (h *Hub) Definitions() []protocol.ToolDef {
 			}),
 		},
 		{
-			Name:        "iems_inspect_pipeline",
+			Name:        "hub_inspect_pipeline",
 			Description: "Report the current branch, active specs, and stageable files.",
 			InputSchema: objectSchema(nil, nil),
 		},
 		{
-			Name:        "iems_finalize_spec",
+			Name:        "hub_finalize_spec",
 			Description: "CRITICAL GATE: MUST NEVER be called during Phase 3 or Phase 4. ONLY call after the human user explicitly approves verification completion (마감 승인).",
 			InputSchema: objectSchema([]string{"ticket_id", "commit_type", "commit_scope", "commit_summary"}, map[string]any{
 				"ticket_id":      map[string]any{"type": "string"},
@@ -181,10 +181,10 @@ func (h *Hub) Invoke(name string, args json.RawMessage) (any, error) {
 		args = []byte(`{}`)
 	}
 	ctx := context.Background()
-	switch name {
-	case "iems_pack_context":
+	switch canonicalTool(name) {
+	case "pack":
 		return h.PackContext(ctx)
-	case "iems_ingest_spec":
+	case "ingest":
 		var in ingestIn
 		if err := json.Unmarshal(args, &in); err != nil {
 			return nil, &ToolError{Code: "ERR_INVALID_PATH", Detail: "arguments"}
@@ -193,15 +193,15 @@ func (h *Hub) Invoke(name string, args json.RawMessage) (any, error) {
 			return h.IngestClipboard(ctx)
 		}
 		return h.IngestSpec(in)
-	case "iems_prepare_branch":
+	case "prepare":
 		var in prepareIn
 		if err := json.Unmarshal(args, &in); err != nil {
 			return nil, &ToolError{Code: "ERR_INVALID_PATH", Detail: "arguments"}
 		}
 		return h.PrepareBranch(ctx, in)
-	case "iems_inspect_pipeline":
+	case "inspect":
 		return h.Inspect(ctx)
-	case "iems_finalize_spec":
+	case "finalize":
 		var in finalizeIn
 		if err := json.Unmarshal(args, &in); err != nil {
 			return nil, &ToolError{Code: "ERR_INVALID_PATH", Detail: "arguments"}
@@ -209,6 +209,24 @@ func (h *Hub) Invoke(name string, args json.RawMessage) (any, error) {
 		return h.Finalize(ctx, in)
 	default:
 		return nil, &ToolError{Code: "ERR_INVALID_PATH", Detail: "unknown tool"}
+	}
+}
+
+// canonicalTool maps the public hub_* name and the legacy iems_* alias to one route.
+func canonicalTool(name string) string {
+	switch name {
+	case "hub_pack_context", "iems_pack_context":
+		return "pack"
+	case "hub_ingest_spec", "iems_ingest_spec":
+		return "ingest"
+	case "hub_prepare_branch", "iems_prepare_branch":
+		return "prepare"
+	case "hub_inspect_pipeline", "iems_inspect_pipeline":
+		return "inspect"
+	case "hub_finalize_spec", "iems_finalize_spec":
+		return "finalize"
+	default:
+		return ""
 	}
 }
 
@@ -410,21 +428,16 @@ func (h *Hub) PrepareBranch(ctx context.Context, in prepareIn) (prepareOut, erro
 	if err != nil {
 		return prepareOut{}, err
 	}
-	stashed := false
+	var hold *todoHold
 	if syncMain && containsPath(dirty, h.todoRel()) {
-		if err := h.gitLocal(ctx, "stash", "push", "-m", "iems-mcp-hub", "--", h.todoRel()); err != nil {
+		got, err := h.holdTodo(ctx)
+		if err != nil {
 			return prepareOut{}, err
 		}
-		stashed = true
+		hold = got
 	}
 	restore := func() error {
-		if !stashed {
-			return nil
-		}
-		if err := h.gitLocal(ctx, "stash", "pop"); err != nil {
-			return &ToolError{Code: "ERR_STASH_FAILED", Detail: err.Error()}
-		}
-		return nil
+		return h.releaseTodo(ctx, hold)
 	}
 	fail := func(err error) (prepareOut, error) {
 		if rerr := restore(); rerr != nil {
@@ -755,6 +768,104 @@ func (h *Hub) gitSyncOut(ctx context.Context, args ...string) (string, error) {
 		return "", execErr(err, stderr)
 	}
 	return stdout, nil
+}
+
+// todoHold keeps a dirty TODO.md outside the global git stash stack.
+type todoHold struct {
+	bakPath  string
+	basePath string
+	active   bool
+}
+
+func (h *Hub) holdTodo(ctx context.Context) (*todoHold, error) {
+	rel := h.todoRel()
+	work := filepath.Join(h.Root, filepath.FromSlash(rel))
+	body, err := os.ReadFile(work)
+	if err != nil {
+		return nil, &ToolError{Code: "ERR_STASH_FAILED", Detail: err.Error()}
+	}
+	baseRaw, err := h.gitLocalOut(ctx, "show", "HEAD:"+rel)
+	if err != nil {
+		return nil, &ToolError{Code: "ERR_STASH_FAILED", Detail: err.Error()}
+	}
+	bakPath, err := h.gitPath(ctx, "mcp-todo.bak")
+	if err != nil {
+		return nil, err
+	}
+	basePath, err := h.gitPath(ctx, "mcp-todo.bak.base")
+	if err != nil {
+		return nil, err
+	}
+	if err := writeAtomic(bakPath, body); err != nil {
+		return nil, &ToolError{Code: "ERR_STASH_FAILED", Detail: err.Error()}
+	}
+	if err := writeAtomic(basePath, []byte(baseRaw)); err != nil {
+		_ = os.Remove(bakPath)
+		return nil, &ToolError{Code: "ERR_STASH_FAILED", Detail: err.Error()}
+	}
+	if err := h.gitLocal(ctx, "checkout", "--", rel); err != nil {
+		_ = os.Remove(bakPath)
+		_ = os.Remove(basePath)
+		return nil, err
+	}
+	return &todoHold{bakPath: bakPath, basePath: basePath, active: true}, nil
+}
+
+func (h *Hub) releaseTodo(ctx context.Context, hold *todoHold) error {
+	if hold == nil || !hold.active {
+		return nil
+	}
+	hold.active = false
+	work := filepath.Join(h.Root, filepath.FromSlash(h.todoRel()))
+	mergeCtx, cancel := context.WithTimeout(ctx, localGitTimeout)
+	defer cancel()
+	_, stderr, err := h.Run.Run(mergeCtx, h.Root, "git", "merge-file", "-q", work, hold.basePath, hold.bakPath)
+	_ = os.Remove(hold.bakPath)
+	_ = os.Remove(hold.basePath)
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return &ToolError{Code: "ERR_TIMEOUT"}
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() > 0 {
+		return &ToolError{Code: "ERR_STASH_FAILED", Detail: "todo restore conflict"}
+	}
+	return execErr(err, stderr)
+}
+
+func (h *Hub) gitPath(ctx context.Context, name string) (string, error) {
+	out, err := h.gitLocalOut(ctx, "rev-parse", "--git-path", name)
+	if err != nil {
+		return "", &ToolError{Code: "ERR_STASH_FAILED", Detail: err.Error()}
+	}
+	p := strings.TrimSpace(out)
+	if p == "" {
+		return "", &ToolError{Code: "ERR_STASH_FAILED", Detail: "git path"}
+	}
+	if !filepath.IsAbs(p) {
+		p = filepath.Join(h.Root, p)
+	}
+	return p, nil
+}
+
+func writeAtomic(path string, body []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".mcp-todo-*.tmp")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	if _, err := tmp.Write(body); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(name)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(name)
+		return err
+	}
+	return os.Rename(name, path)
 }
 
 func execErr(err error, stderr string) error {

@@ -90,7 +90,10 @@ func TestInitAppendsGitignoreOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(body)
-	if strings.Count(text, "obsidian-docs/") != 1 || !strings.Contains(text, "repomix-output.xml") || !strings.Contains(text, "bin/") || !strings.Contains(text, ".cursor/") {
+	if !strings.Contains(text, "obsidian-docs/v2/") || !strings.Contains(text, "repomix-output.xml") || !strings.Contains(text, "bin/") || !strings.Contains(text, ".cursor/") {
+		t.Fatal(text)
+	}
+	if strings.Count(text, "\nobsidian-docs/\n") != 1 {
 		t.Fatal(text)
 	}
 	if !strings.HasPrefix(text, "node_modules/\n") {
@@ -169,7 +172,7 @@ func TestInitForceOverwritesAndKeepsGitignore(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(body)
-	if !strings.HasPrefix(text, "node_modules/\n") || strings.Count(text, "obsidian-docs/") != 1 {
+	if !strings.HasPrefix(text, "node_modules/\n") || !strings.Contains(text, "test-docs/") || strings.Contains(text, "obsidian-docs/") {
 		t.Fatal(text)
 	}
 	manual := filepath.Join(dir, "test-docs", "01_SOP (표준운영절차)", "표준-업무-매뉴얼.md")
@@ -194,6 +197,36 @@ func TestInitForceOverwritesAndKeepsGitignore(t *testing.T) {
 	}
 	if !strings.Contains(string(second), "Other") || string(second) == string(first) {
 		t.Fatal(string(second))
+	}
+}
+
+func TestInitCustomVaultBindsPaths(t *testing.T) {
+	dir := t.TempDir()
+	_, err := RunInitProject(dir, InitOptions{Prefix: "DEMO", Vault: "test-vault", ProjectName: "Demo", CreatedAt: "2026-10-24"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, ".mcp-pipeline.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"test-vault/"`) || strings.Contains(string(raw), "obsidian-docs") {
+		t.Fatal(string(raw))
+	}
+	ignore, err := os.ReadFile(filepath.Join(dir, ".gitignore"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(ignore), "test-vault/") || strings.Contains(string(ignore), "obsidian-docs") {
+		t.Fatal(string(ignore))
+	}
+	manual, err := os.ReadFile(filepath.Join(dir, "test-vault", "01_SOP (표준운영절차)", "표준-업무-매뉴얼.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(manual)
+	if !strings.Contains(text, "hub_prepare_branch") || !strings.Contains(text, "test-vault/") || strings.Contains(text, "iems_prepare_branch") || strings.Contains(text, "obsidian-docs") {
+		t.Fatal(text)
 	}
 }
 

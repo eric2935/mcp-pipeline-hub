@@ -228,6 +228,7 @@ func TestIngestClipboardJSONFields(t *testing.T) {
 func clipboardWorkspace(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
+	writePipelineConfig(t, dir, "IEMS", "obsidian-docs/v2")
 	if err := os.WriteFile(filepath.Join(dir, "TODO.md"), []byte("## In Progress\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}

@@ -1,0 +1,23 @@
+{
+  "tool_name": "agentic-mcp-hub",
+  "ticket_prefix": "IEMS",
+  "ticket_pattern": "^IEMS-[0-9]+(?:-[0-9]+)?$",
+  "vault_dir": "obsidian-docs/v2",
+  "spec_dir": "03_Spec (구현명세서)",
+  "spec_archive_dir": "_archive",
+  "todo_file": "TODO.md",
+  "ssot_manifests": [],
+  "dirty_blacklist": [
+    "TODO.md",
+    "repomix-output.xml",
+    "obsidian-docs/v2/",
+    ".cursor/"
+  ],
+  "close_exclude_paths": [
+    "obsidian-docs/v2/",
+    "TODO.md",
+    ".cursor/",
+    "repomix-output.xml",
+    ".obsidian/"
+  ]
+}

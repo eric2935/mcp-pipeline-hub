@@ -4,7 +4,7 @@ import "encoding/json"
 
 const (
 	ProtocolDefault = "2024-11-05"
-	ServerName      = "iems-mcp-hub"
+	ServerName      = "agentic-mcp-hub"
 	ServerVersion   = "0.1.0"
 )
 
