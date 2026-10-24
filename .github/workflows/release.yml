@@ -1,0 +1,128 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Test
+        run: go test -v ./...
+
+  build:
+    name: Build
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - goos: darwin
+            goarch: amd64
+            binary: mcp-hub
+            ext: tar.gz
+          - goos: darwin
+            goarch: arm64
+            binary: mcp-hub
+            ext: tar.gz
+          - goos: linux
+            goarch: amd64
+            binary: mcp-hub
+            ext: tar.gz
+          - goos: linux
+            goarch: arm64
+            binary: mcp-hub
+            ext: tar.gz
+          - goos: windows
+            goarch: amd64
+            binary: mcp-hub.exe
+            ext: zip
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build and archive
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          TAG: ${{ github.ref_name }}
+          BIN: ${{ matrix.binary }}
+          EXT: ${{ matrix.ext }}
+        run: |
+          set -euo pipefail
+          mkdir -p stage dist
+          go build -ldflags="-s -w -X mcp-pipeline-hub/internal/protocol.ServerVersion=${TAG}" -o "stage/${BIN}" ./cmd/mcp-hub
+          archive="mcp-hub_${TAG}_${GOOS}_${GOARCH}.${EXT}"
+          if [ "${EXT}" = "zip" ]; then
+            (cd stage && zip "../dist/${archive}" "${BIN}")
+          else
+            tar -C stage -czf "dist/${archive}" "${BIN}"
+          fi
+
+      - name: Upload archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcp-hub-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/mcp-hub_${{ github.ref_name }}_${{ matrix.goos }}_${{ matrix.goarch }}.${{ matrix.ext }}
+          if-no-files-found: error
+
+  release:
+    name: Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download archives
+        uses: actions/download-artifact@v4
+        with:
+          pattern: mcp-hub-*
+          merge-multiple: true
+          path: dist
+
+      - name: Create checksums and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          cd dist
+          shopt -s nullglob
+          files=(mcp-hub_*.tar.gz mcp-hub_*.zip)
+          if [ "${#files[@]}" -ne 5 ]; then
+            echo "expected 5 archives, got ${#files[@]}" >&2
+            exit 1
+          fi
+          sha256sum "${files[@]}" > checksums.txt
+          sha256sum -c checksums.txt
+          gh release create "${TAG}" \
+            --title "${TAG}" \
+            --generate-notes \
+            "${files[@]}" \
+            checksums.txt

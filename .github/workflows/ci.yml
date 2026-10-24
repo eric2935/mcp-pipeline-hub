@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Test
+        run: go test -v ./...
+
+  cross-compile:
+    name: Cross-compile
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - goos: darwin
+            goarch: amd64
+            binary: mcp-hub
+          - goos: darwin
+            goarch: arm64
+            binary: mcp-hub
+          - goos: linux
+            goarch: amd64
+            binary: mcp-hub
+          - goos: linux
+            goarch: arm64
+            binary: mcp-hub
+          - goos: windows
+            goarch: amd64
+            binary: mcp-hub.exe
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # CI has no release tag. The value exercises -ldflags -X; release.yml injects the git tag.
+      - name: Build target
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          go build -ldflags="-s -w -X mcp-pipeline-hub/internal/protocol.ServerVersion=ci" -o "${{ matrix.binary }}" ./cmd/mcp-hub
