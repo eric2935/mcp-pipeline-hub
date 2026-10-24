@@ -2,10 +2,15 @@ package main
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"mcp-pipeline-hub/internal/config"
+	"mcp-pipeline-hub/internal/pipeline"
 )
 
 func TestCloseTicketFlagSkipsServerRoot(t *testing.T) {
@@ -123,19 +128,155 @@ func TestInvalidConfigExits(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, ".mcp-pipeline.json"), []byte("{"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	var stderr bytes.Buffer
-	code := run([]string{"-root", dir, "-close-ticket"}, strings.NewReader("\n"), &bytes.Buffer{}, &stderr)
-	if code != 1 || !strings.Contains(stderr.String(), "ERR_CONFIG_INVALID") {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"-root", dir, "-close-ticket"}, strings.NewReader("\n"), &stdout, &stderr)
+	if code != 1 || stderr.String() != "ERR_CONFIG_INVALID: unexpected end of JSON input\n" {
 		t.Fatalf("%d %s", code, stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatal(stdout.String())
 	}
 }
 
 func TestExplicitConfigMissing(t *testing.T) {
 	dir := t.TempDir()
+	var stdout, stderr bytes.Buffer
+	missing := filepath.Join(dir, "missing.json")
+	code := run([]string{"-root", dir, "-config", missing, "-close-ticket"}, strings.NewReader("\n"), &stdout, &stderr)
+	if code != 1 || stderr.String() != "ERR_CONFIG_NOT_FOUND: "+missing+"\n" {
+		t.Fatalf("%d %s", code, stderr.String())
+	}
+	if stdout.Len() != 0 || strings.Contains(stderr.String(), "[DEBUG]") {
+		t.Fatalf("stdout %q stderr %s", stdout.String(), stderr.String())
+	}
+}
+
+func TestMissingConfigDebugFlag(t *testing.T) {
+	dir := t.TempDir()
+	var stdout, stderr bytes.Buffer
+	missing := filepath.Join(dir, "nonexistent.json")
+	code := run([]string{"-config", missing, "-debug"}, strings.NewReader(""), &stdout, &stderr)
+	want := "ERR_CONFIG_NOT_FOUND: " + missing + "\n" +
+		"[DEBUG] error type: *config.Error\n" +
+		"[DEBUG] unwrap: <none>\n" +
+		"[DEBUG] context: code=ERR_CONFIG_NOT_FOUND detail=" + missing + "\n"
+	if code != 1 || stderr.String() != want {
+		t.Fatalf("%d %q", code, stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatal(stdout.String())
+	}
+}
+
+func TestMissingConfigDebugEnv(t *testing.T) {
+	dir := t.TempDir()
+	missing := filepath.Join(dir, "nonexistent.json")
+	for _, value := range []string{"1", "true", "TRUE"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("MCP_DEBUG", value)
+			var stdout, stderr bytes.Buffer
+			code := run([]string{"-config", missing}, strings.NewReader(""), &stdout, &stderr)
+			if code != 1 || !strings.Contains(stderr.String(), "[DEBUG] error type: *config.Error") {
+				t.Fatalf("%d %s", code, stderr.String())
+			}
+			if !strings.Contains(stderr.String(), "[DEBUG] unwrap: <none>") || stdout.Len() != 0 {
+				t.Fatalf("stdout %q stderr %s", stdout.String(), stderr.String())
+			}
+		})
+	}
+}
+
+func TestDebugEnvOff(t *testing.T) {
+	dir := t.TempDir()
+	missing := filepath.Join(dir, "missing.json")
+	for _, value := range []string{"0", "false", "yes"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("MCP_DEBUG", value)
+			var stdout, stderr bytes.Buffer
+			code := run([]string{"-config", missing}, strings.NewReader(""), &stdout, &stderr)
+			if code != 1 || strings.Contains(stderr.String(), "[DEBUG]") || stdout.Len() != 0 {
+				t.Fatalf("%d stdout %q stderr %s", code, stdout.String(), stderr.String())
+			}
+		})
+	}
+}
+
+func TestDebugEnvStaysOnWhenFlagFalse(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("MCP_DEBUG", "1")
 	var stderr bytes.Buffer
 	missing := filepath.Join(dir, "missing.json")
-	code := run([]string{"-root", dir, "-config", missing, "-close-ticket"}, strings.NewReader("\n"), &bytes.Buffer{}, &stderr)
-	if code != 1 || !strings.Contains(stderr.String(), "ERR_CONFIG_NOT_FOUND") {
+	code := run([]string{"-config", missing, "-debug=false"}, strings.NewReader(""), &bytes.Buffer{}, &stderr)
+	if code != 1 || !strings.Contains(stderr.String(), "[DEBUG] error type:") {
 		t.Fatalf("%d %s", code, stderr.String())
+	}
+}
+
+func TestDebugFlagDoesNotCountAsMode(t *testing.T) {
+	var stderr bytes.Buffer
+	code := run([]string{"-debug", "-ingest-clipboard", "-close-ticket"}, strings.NewReader(""), &bytes.Buffer{}, &stderr)
+	if code != 2 || !strings.Contains(stderr.String(), "mutually exclusive") {
+		t.Fatalf("%d %s", code, stderr.String())
+	}
+	dir := t.TempDir()
+	stderr.Reset()
+	var stdout bytes.Buffer
+	code = run([]string{"-root", dir, "-debug", "-close-ticket"}, strings.NewReader("\n"), &stdout, &stderr)
+	if strings.Contains(stderr.String(), "mutually exclusive") || stdout.Len() != 0 {
+		t.Fatalf("%d stdout %q stderr %s", code, stdout.String(), stderr.String())
+	}
+}
+
+func TestWriteCLIErrorDetailFormatting(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{
+			name: "tool detail",
+			err:  &pipeline.ToolError{Code: "ERR_GIT", Detail: "origin/main"},
+			want: "ERR_GIT: origin/main\n",
+		},
+		{
+			name: "empty detail",
+			err:  &pipeline.ToolError{Code: "ERR_TIMEOUT"},
+			want: "ERR_TIMEOUT\n",
+		},
+		{
+			name: "blank detail",
+			err:  &config.Error{Code: "ERR_CONFIG_INVALID", Detail: " \n\t "},
+			want: "ERR_CONFIG_INVALID\n",
+		},
+		{
+			name: "multiline detail",
+			err:  &config.Error{Code: "ERR_CONFIG_INVALID", Detail: "line1\nline2"},
+			want: "ERR_CONFIG_INVALID: line1 line2\n",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var stderr bytes.Buffer
+			writeCLIError(&stderr, tc.err, false)
+			if stderr.String() != tc.want {
+				t.Fatalf("%q", stderr.String())
+			}
+		})
+	}
+}
+
+func TestWriteCLIErrorDebugDomainAndUnwrap(t *testing.T) {
+	var stderr bytes.Buffer
+	writeCLIError(&stderr, &pipeline.ToolError{Code: "ERR_TIMEOUT"}, true)
+	want := "ERR_TIMEOUT\n[DEBUG] error type: *pipeline.ToolError\n[DEBUG] unwrap: <none>\n[DEBUG] context: code=ERR_TIMEOUT detail=\n"
+	if stderr.String() != want {
+		t.Fatalf("%q", stderr.String())
+	}
+	stderr.Reset()
+	err := fmt.Errorf("outer: %w", errors.New("root-cause"))
+	writeCLIError(&stderr, err, true)
+	got := stderr.String()
+	if !strings.HasPrefix(got, "outer: root-cause\n") || !strings.Contains(got, "[DEBUG] unwrap: root-cause\n") || !strings.Contains(got, "[DEBUG] context: message=outer: root-cause\n") {
+		t.Fatal(got)
 	}
 }
