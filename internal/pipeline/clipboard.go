@@ -151,6 +151,45 @@ func readOSClipboard(ctx context.Context) (string, error) {
 	return string(out), nil
 }
 
+// WriteClipboard copies text to the OS clipboard.
+func WriteClipboard(ctx context.Context, text string) error {
+	return writeOSClipboard(ctx, text)
+}
+
+func writeOSClipboard(ctx context.Context, text string) error {
+	ctx, cancel := context.WithTimeout(ctx, clipboardTimeout)
+	defer cancel()
+	name, args, err := clipboardWriteCommand(runtime.GOOS, exec.LookPath)
+	if err != nil {
+		return err
+	}
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Stdin = strings.NewReader(text)
+	if err := cmd.Run(); err != nil {
+		return clipboardFailure(err)
+	}
+	return nil
+}
+
+func clipboardWriteCommand(goos string, lookPath func(string) (string, error)) (string, []string, error) {
+	switch goos {
+	case "darwin":
+		return "pbcopy", nil, nil
+	case "windows":
+		return "powershell", []string{"-NoProfile", "-Command", "$input | Set-Clipboard"}, nil
+	case "linux":
+		if _, err := lookPath("wl-copy"); err == nil {
+			return "wl-copy", nil, nil
+		}
+		if _, err := lookPath("xclip"); err == nil {
+			return "xclip", []string{"-selection", "clipboard"}, nil
+		}
+		return "", nil, &ToolError{Code: "ERR_CLIPBOARD"}
+	default:
+		return "", nil, &ToolError{Code: "ERR_CLIPBOARD"}
+	}
+}
+
 func clipboardCommand(goos string, lookPath func(string) (string, error)) (string, []string, error) {
 	switch goos {
 	case "darwin":

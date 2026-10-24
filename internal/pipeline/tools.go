@@ -154,9 +154,10 @@ func (h *Hub) Definitions() []protocol.ToolDef {
 		},
 		{
 			Name:        "hub_finalize_spec",
-			Description: "CRITICAL GATE: MUST NEVER be called during Phase 3 or Phase 4. ONLY call after the human user explicitly approves verification completion (마감 승인).",
-			InputSchema: objectSchema([]string{"ticket_id", "commit_type", "commit_scope", "commit_summary"}, map[string]any{
+			Description: "CRITICAL GATE: MUST NEVER be called during Phase 3 or Phase 4. ONLY call after the human user explicitly approves verification completion (마감 승인). finalize_token is the one-time challenge token issued by the human operator.",
+			InputSchema: objectSchema([]string{"ticket_id", "finalize_token", "commit_type", "commit_scope", "commit_summary"}, map[string]any{
 				"ticket_id":      map[string]any{"type": "string"},
+				"finalize_token": map[string]any{"type": "string", "description": "One-time challenge token issued by the human operator"},
 				"commit_type":    map[string]any{"type": "string"},
 				"commit_scope":   map[string]any{"type": "string"},
 				"commit_summary": map[string]any{"type": "string"},
@@ -508,6 +509,7 @@ func (h *Hub) Inspect(ctx context.Context) (inspectOut, error) {
 
 type finalizeIn struct {
 	TicketID      string `json:"ticket_id"`
+	FinalizeToken string `json:"finalize_token"`
 	CommitType    string `json:"commit_type"`
 	CommitScope   string `json:"commit_scope"`
 	CommitSummary string `json:"commit_summary"`
@@ -545,6 +547,10 @@ func (h *Hub) Finalize(ctx context.Context, in finalizeIn) (finalizeOut, error) 
 	if !ok {
 		return finalizeOut{}, &ToolError{Code: "ERR_INVALID_BRANCH", Detail: branch}
 	}
+	now := h.Now()
+	if err := h.verifyFinalizeToken(in.TicketID, in.FinalizeToken, now); err != nil {
+		return finalizeOut{}, err
+	}
 	matches, err := h.activeSpecs(in.TicketID)
 	if err != nil {
 		return finalizeOut{}, err
@@ -555,13 +561,16 @@ func (h *Hub) Finalize(ctx context.Context, in finalizeIn) (finalizeOut, error) 
 	if len(matches) > 1 {
 		return finalizeOut{}, &ToolError{Code: "ERR_SPEC_AMBIGUOUS"}
 	}
+	if err := h.burnFinalizeToken(in.TicketID, in.FinalizeToken, now); err != nil {
+		return finalizeOut{}, err
+	}
 	srcRel := matches[0]
 	src := filepath.Join(h.Root, filepath.FromSlash(srcRel))
 	body, err := os.ReadFile(src)
 	if err != nil {
 		return finalizeOut{}, &ToolError{Code: "ERR_SPEC_NOT_ACTIVE", Detail: err.Error()}
 	}
-	date := h.Now().Format("2006-01-02")
+	date := now.Format("2006-01-02")
 	updated, err := completeFrontmatter(string(body), date, in)
 	if err != nil {
 		return finalizeOut{}, err

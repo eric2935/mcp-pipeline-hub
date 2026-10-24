@@ -22,7 +22,7 @@ Phase 3과 Phase 4에서는 `add`, `commit`, `push`, `branch -d`를 실행하거
 
 ## Finalize Gate
 
-마감 승인 전에는 `hub_finalize_spec`을 호출하지 않고, Spec을 `_archive/`로 옮기지 않는다.
+마감 승인 전에는 `hub_finalize_spec`을 호출하지 않고, Spec을 `_archive/`로 옮기지 않는다. 호출에는 사람이 `mcp-hub -issue-token`으로 발급한 일회용 `finalize_token`이 필요하다.
 
 ## 도구
 
