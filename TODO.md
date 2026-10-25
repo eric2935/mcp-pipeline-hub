@@ -14,3 +14,4 @@
 - [x] HUB-006: [Refactor]: Squash Merge 커밋 검색 깊이 상향 및 merge-file 가이드 보강
 - [x] HUB-008: [Chore](Release): v0.1.0 태그 릴리스 및 다중 OS 크로스 컴파일 배포 검증
 - [x] HUB-009: [Docs](README): v0.1.0 바이너리 설치 및 MCP 서버 연동 가이드 README.md 작성
+- [x] HUB-010: [Docs](Architecture): 파이프라인 엔진 적용 도메인 및 비즈니스 포지셔닝 분석서 작성
